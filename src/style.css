@@ -22,3 +22,5 @@
 .route-link{display:inline-block;margin-top:6px;padding:9px 12px;background:#e9f7f2;border-radius:10px;color:#0b8b75;font-weight:700;text-decoration:none;font-size:13px}
 
 .outline{border:1px solid #a8d9cc;background:#fff;color:#0b8b75;border-radius:11px;padding:11px 14px;font-weight:700}.report-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #edf0f0;font-size:12px}.report-row span{overflow-wrap:anywhere}
+
+.food-item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #edf0f0}.food-item>div{display:flex;flex-direction:column;gap:4px}.food-item b{font-size:14px}.food-item a{font-size:12px;white-space:nowrap;color:#0b947a;text-decoration:none;font-weight:700}.food-item:last-child{border-bottom:0}@media(max-width:520px){.food-item{gap:8px}.food-item a{font-size:11px}}
