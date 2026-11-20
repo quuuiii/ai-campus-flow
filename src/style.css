@@ -236,3 +236,15 @@ details.more{margin-top:10px;border-top:1px solid #eef2f1;padding-top:6px}
 .week .cell{position:absolute;left:0;right:0;border:0;background:transparent;padding:0;z-index:0}
 .week .cell:hover,.week .cell:focus-visible{background:#12a88b1a}
 .week .ev{z-index:1}
+
+.pgrid{display:grid;grid-template-columns:34px repeat(7,minmax(0,1fr));gap:2px;font-size:11px}
+.pgrid .hd{text-align:center;font-weight:800;padding:6px 0;background:var(--navy);color:#fff;border-radius:6px;position:static}
+.pgrid .hd.today{background:var(--mint-d)}
+.pl{display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--navy);color:#fff;border-radius:6px;min-height:44px}
+.pl small{font-size:8.5px;opacity:.8}
+.pc{min-height:44px;border:1px solid #e3eae8;background:#fff;border-radius:6px;padding:2px;overflow:hidden;text-align:left;color:#fff;line-height:1.2;display:flex;flex-direction:column;justify-content:flex-start}
+.pc:not(.has):hover,.pc:not(.has):focus-visible{background:#e9f7f2}
+.pc.has{border-color:transparent}
+.pc b{font-size:9.5px;font-weight:700;word-break:break-all}
+.pc small{font-size:8px;color:#ffffffd0}
+.pc.clash{outline:2px solid #d8505c;outline-offset:-2px}
