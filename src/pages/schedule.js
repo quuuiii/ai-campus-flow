@@ -5,7 +5,7 @@ import { BUILDINGS } from '../data/places.js';
 import { COURSE_COLORS } from '../data/demo.js';
 import { sanitizeCourse, findConflict, sortCourses } from '../store.js';
 
-const view = { mode: 'week', editId: null };
+const view = { mode: 'week', editId: null, prefill: null };
 const H0 = 8, H1 = 21, HH = 44; // 週視圖 08:00–21:00，每小時 44px
 
 function weekGrid(courses) {
@@ -21,7 +21,8 @@ function weekGrid(courses) {
       const clash = cs.some((x) => x.id !== c.id && toMin(c.start) < toMin(x.end) && toMin(c.end) > toMin(x.start));
       return `<button class="ev ${clash ? 'clash' : ''}" data-edit="${esc(c.id)}" style="top:${((s - H0 * 60) / 60) * HH}px;height:${((e - s) / 60) * HH - 1}px;background:${COURSE_COLORS[c.color]}" aria-label="${esc(c.name)} 週${DAYS[c.day]} ${c.start}-${c.end}，點擊編輯">${esc(c.name)}<small>${esc(c.start)}</small></button>`;
     }).join('');
-    return `<div class="col" style="height:${hours.length * HH}px;--hh:${HH}px">${evs}</div>`;
+    const cells = hours.map((h, i) => `<button class="cell" data-cell="${d}:${h}" style="top:${i * HH}px;height:${HH}px" aria-label="週${DAYS[d]} ${String(h).padStart(2, '0')}:00 新增課程"></button>`).join('');
+    return `<div class="col" style="height:${hours.length * HH}px;--hh:${HH}px">${cells}${evs}</div>`;
   }).join('');
   return `<div class="week" role="group" aria-label="週課表"><div></div>${head}${gutter}${cols}</div>`;
 }
@@ -40,7 +41,7 @@ function listView(courses) {
 
 export function renderSchedule(ctx) {
   const courses = sortCourses(ctx.state.courses), ed = courses.find((c) => c.id === view.editId) || null;
-  const v = ed || { day: new Date().getDay() || 1, start: '09:00', end: '10:00', name: '', building: '', color: courses.length % 6 };
+  const pf = view.prefill, v = ed || { day: pf?.day ?? (new Date().getDay() || 1), start: pf?.start ?? '09:00', end: pf?.end ?? '10:00', name: '', building: '', color: courses.length % 6 };
   return `<div class="page-head"><span class="eyebrow">Schedule</span><h1>我的課表</h1><p>規劃器會自動避開上課時間；課程只存在這台裝置。</p></div>
   <div class="grid2" style="align-items:start">
   <section class="card"><div class="card-h"><h2>${ic(ed ? 'edit' : 'plus')}${ed ? '編輯課程' : '新增課程'}</h2></div>
@@ -55,8 +56,7 @@ export function renderSchedule(ctx) {
     </form></section>
   <section class="card"><div class="card-h"><h2>${ic('calendar')}課表 <small>${courses.length} 堂</small></h2>
     <div class="chips" style="margin:0"><button data-view="week" aria-pressed="${view.mode === 'week'}">週視圖</button><button data-view="list" aria-pressed="${view.mode === 'list'}">清單</button></div></div>
-    ${courses.length || view.mode === 'list' ? (view.mode === 'week' ? weekGrid(courses) : listView(courses)) : '<div class="empty">還沒有課程。用表單新增第一堂課吧。</div>'}
-    ${view.mode === 'week' && courses.length ? '<p class="note faint" style="margin-top:8px">紅框＝與其他課程時間重疊。點課程可編輯。</p>' : ''}</section></div>`;
+    ${view.mode === 'week' ? weekGrid(courses) + '<p class="note faint" style="margin-top:8px">點空白格子＝在該時段新增課程；點課程＝編輯或刪除。紅框＝時間重疊。</p>' : listView(courses)}</section></div>`;
 }
 
 export function bindSchedule(ctx) {
@@ -69,7 +69,16 @@ export function bindSchedule(ctx) {
     state.courses = state.courses.filter((x) => x.id !== c.id); state.demo = state.courses.some((x) => x.demo);
     view.editId = null; ctx.save(); ctx.rerender(); ctx.toast('已刪除課程', 'ok');
   }));
-  const cancel = $('#cancelEdit'); if (cancel) cancel.onclick = () => { view.editId = null; ctx.rerender(); };
+  document.querySelectorAll('[data-cell]').forEach((b) => (b.onclick = () => {
+    const [d, h] = b.dataset.cell.split(':').map(Number), pad = (n) => String(n).padStart(2, '0');
+    view.editId = null; view.prefill = { day: d, start: pad(h) + ':00', end: pad(Math.min(h + 1, 23)) + ':00' };
+    ctx.rerender(); const f = document.querySelector('#courseForm'); f?.scrollIntoView({ behavior: 'smooth', block: 'center' }); f?.querySelector('input[name=name]').focus();
+  }));
+  const fs = $('#courseForm input[name=start]'), fe = $('#courseForm input[name=end]');
+  const sync = () => { fe.min = fs.value; if (fs.value && fe.value && toMin(fe.value) <= toMin(fs.value)) fe.setCustomValidity('結束時間必須晚於開始時間'); else fe.setCustomValidity(''); };
+  fs.addEventListener('change', () => { if (fs.value && (!fe.value || toMin(fe.value) <= toMin(fs.value))) { const m = Math.min(toMin(fs.value) + 60, 1439); fe.value = String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); } sync(); });
+  fe.addEventListener('change', sync); sync();
+  const cancel = $('#cancelEdit'); if (cancel) cancel.onclick = () => { view.editId = null; view.prefill = null; ctx.rerender(); };
   $('#courseForm').onsubmit = (e) => {
     e.preventDefault();
     const err = $('#courseErr'), d = Object.fromEntries(new FormData(e.target));
@@ -85,6 +94,6 @@ export function bindSchedule(ctx) {
     if (view.editId) { const i = state.courses.findIndex((x) => x.id === view.editId); state.courses[i] = { ...c, ...(state.courses[i].demo ? { demo: true } : {}) }; }
     else state.courses.push(c);
     state.demo = state.courses.some((x) => x.demo);
-    view.editId = null; ctx.save(); ctx.rerender(); ctx.toast('已儲存課程', 'ok');
+    view.editId = null; view.prefill = null; ctx.save(); ctx.rerender(); ctx.toast('已儲存課程', 'ok');
   };
 }

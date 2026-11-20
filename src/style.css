@@ -232,3 +232,7 @@ details.more{margin-top:10px;border-top:1px solid #eef2f1;padding-top:6px}
   .blk time,.mini time{min-width:80px}
   .tl-head details.prov{max-width:none}
 }
+
+.week .cell{position:absolute;left:0;right:0;border:0;background:transparent;padding:0;z-index:0}
+.week .cell:hover,.week .cell:focus-visible{background:#12a88b1a}
+.week .ev{z-index:1}
