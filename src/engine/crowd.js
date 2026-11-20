@@ -1,0 +1,55 @@
+// 人潮估計。資料來源分三類，介面上必須清楚區分：
+//   observed  真實觀察：由團隊現場觀察紀錄推得
+//   simulated 人工模擬：示範參數（下課尖峰規則、假設的選課人數與 Wi-Fi 密度），不是實測
+//   model     模型預測：尚未實作，保留給日後（目前不會回傳）
+import { PLACES } from '../data/places.js';
+import { nowTW } from '../util.js';
+
+export const SOURCE_LABEL = { observed: '觀察', simulated: '模擬', model: '模型' };
+export const MIN_SAMPLES = 3;      // 少於此筆數不使用觀察資料
+export const FULL_WEIGHT_AT = 8;   // 達此筆數才完全採用觀察資料；之間與模擬值混合
+const OBS_PCT = { 1: 10, 2: 30, 3: 50, 4: 70, 5: 90 };
+
+// 下課尖峰係數：11:30 起升高，12:00–12:30 最高，之後緩降
+const lunchPeak = (t) =>
+  t < 690 ? 0.25 : t < 720 ? 0.25 + (0.75 * (t - 690)) / 30 : t < 750 ? 1 : t < 810 ? 1 - (0.7 * (t - 750)) / 60 : 0.3;
+
+export const vacancy = (p, t) => Math.max(10, Math.round(p.vac - 3 * Math.max(0, t / 60 - 15)));
+export const simulate = (p, t) => (p.vac != null ? 100 - vacancy(p, t) : Math.round(p.base + p.peak * lunchPeak(t)));
+export const queueMin = (pct) => (pct >= 70 ? Math.round((pct - 68) * 0.75) : 0);
+export const levelOf = (pct) => (pct >= 70 ? '高' : pct >= 40 ? '中' : '低');
+export const sufficiency = (n) => (n < MIN_SAMPLES ? '不足' : n < FULL_WEIGHT_AT ? '偏少' : n < 16 ? '尚可' : '充足');
+
+export const obsPlaceId = (o) => o.placeId || Object.values(PLACES).find((p) => p.name === o.place)?.id || null;
+
+// 預測某地點在 (星期, 分鐘) 的人潮。資料不足時回傳透明的「模擬」值。
+export function predictCrowd(place, minute, observations = [], day = null) {
+  const sim = simulate(place, minute);
+  let wSum = 0, vSum = 0, n = 0;
+  for (const o of observations) {
+    if (obsPlaceId(o) !== place.id || !OBS_PCT[o.crowd]) continue;
+    const t = nowTW(new Date(o.timestamp));
+    if (Number.isNaN(t.minute) || Math.abs(t.minute - minute) > 60) continue;
+    const w = day != null && t.day === day ? 2 : 1;
+    wSum += w; vSum += w * OBS_PCT[o.crowd]; n++;
+  }
+  if (n < MIN_SAMPLES) {
+    return { pct: sim, source: 'simulated', n, sufficiency: '不足', note: n ? `僅 ${n} 筆觀察，資料不足，使用模擬值` : '尚無觀察資料，使用模擬值' };
+  }
+  const obsAvg = vSum / wSum;
+  const k = Math.min(1, n / FULL_WEIGHT_AT); // 透明的收縮估計：樣本少就向模擬值靠攏
+  const pct = Math.round(k * obsAvg + (1 - k) * sim);
+  return { pct, source: 'observed', n, sufficiency: sufficiency(n), note: k < 1 ? `${n} 筆觀察，與模擬值混合（觀察權重 ${Math.round(k * 100)}%）` : `${n} 筆觀察的加權平均` };
+}
+
+// 在 [from, to] 內找人潮最低的時間（每 15 分鐘取樣）
+export function bestTime(place, from, to, observations = [], day = null) {
+  let best = null;
+  for (let t = from; t <= to; t += 15) {
+    const p = predictCrowd(place, t, observations, day);
+    if (!best || p.pct < best.pct) best = { minute: t, ...p };
+  }
+  return best;
+}
+
+export const defaultCrowdFn = (observations = [], day = null) => (place, minute) => predictCrowd(place, minute, observations, day);

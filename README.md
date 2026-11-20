@@ -9,7 +9,16 @@ npm install
 npm run dev
 ```
 
-## 功能
+## V2 功能
+
+- 一鍵載入中大 Demo 情境（課表、需求、排好的行程，開啟即有畫面）
+- 規則式智慧排程：空堂 × 步行時間 × 人潮模擬 × 截止時間，並附「推薦理由」
+- 時間緊繃 / 衝突偵測 + 「AI 一鍵重新調配」
+- 偏好權重（避開人潮 / 最短步行 / 高效率專注）、換地點、調整順序、勾選完成
+- 數據來源標示：人潮與空位率皆為模擬估算
+- `vercel.json` rewrite，重新整理不會 404
+
+## 舊功能
 
 - 課表新增、刪除與衝突檢查
 - 校園示範地點人潮分級
@@ -22,3 +31,10 @@ npm run dev
 ## 部署
 
 執行 `npm run build`，將 `dist` 部署至靜態網站服務（例如 Vercel）。
+
+
+## v2 重構摘要
+- 結構：`src/pages/*`（頁面）、`src/engine/*`（排程、人潮）、`src/store.js`（localStorage 驗證/遷移）、`src/data/*`。
+- 指令：`npm test`（node:test）、`npm run build`。
+- 資料誠實：人潮為「觀察／模擬」，目前沒有已訓練的預測模型，詳見 `docs/ai-architecture.md`。
+- 資料庫評估：`docs/supabase-plan.md`、`supabase/schema.sql`（草案，未部署）。
