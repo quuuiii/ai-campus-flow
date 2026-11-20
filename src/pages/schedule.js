@@ -6,25 +6,25 @@ import { COURSE_COLORS } from '../data/demo.js';
 import { sanitizeCourse, findConflict, sortCourses } from '../store.js';
 
 const view = { mode: 'week', editId: null, prefill: null };
-const H0 = 8, H1 = 21, HH = 44; // 週視圖 08:00–21:00，每小時 44px
+// 中大節次：每節 hh:00–hh:50（與選課系統 A4 課表相同）
+const PERIODS = [['1', 8], ['2', 9], ['3', 10], ['4', 11], ['Z', 12], ['5', 13], ['6', 14], ['7', 15], ['8', 16], ['9', 17], ['A', 18], ['B', 19], ['C', 20], ['D', 21], ['E', 22], ['F', 23]].map(([id, h]) => ({ id, h, s: h * 60, e: h * 60 + 50 }));
+const pad = (n) => String(n).padStart(2, '0');
+const covers = (c, p) => toMin(c.start) < p.e && toMin(c.end) > p.s;
 
 function weekGrid(courses) {
-  const today = nowTW().day, order = [1, 2, 3, 4, 5, 6, 0];
-  const hours = Array.from({ length: H1 - H0 }, (_, i) => H0 + i);
-  const head = order.map((d) => `<div class="hd ${d === today ? 'today' : ''}">${DAYS[d]}</div>`).join('');
-  const gutter = `<div class="gutter" style="height:${hours.length * HH}px">${hours.map((h, i) => `<span style="top:${i * HH}px">${h}</span>`).join('')}</div>`;
-  const cols = order.map((d) => {
-    const cs = courses.filter((c) => +c.day === d);
-    const evs = cs.map((c) => {
-      const s = Math.max(toMin(c.start), H0 * 60), e = Math.min(toMin(c.end), H1 * 60);
-      if (e <= s) return '';
-      const clash = cs.some((x) => x.id !== c.id && toMin(c.start) < toMin(x.end) && toMin(c.end) > toMin(x.start));
-      return `<button class="ev ${clash ? 'clash' : ''}" data-edit="${esc(c.id)}" style="top:${((s - H0 * 60) / 60) * HH}px;height:${((e - s) / 60) * HH - 1}px;background:${COURSE_COLORS[c.color]}" aria-label="${esc(c.name)} 週${DAYS[c.day]} ${c.start}-${c.end}，點擊編輯">${esc(c.name)}<small>${esc(c.start)}</small></button>`;
+  const today = nowTW().day, order = [0, 1, 2, 3, 4, 5, 6];
+  const head = '<div class="hd">節</div>' + order.map((d) => `<div class="hd ${d === today ? 'today' : ''}">${DAYS[d]}</div>`).join('');
+  const rows = PERIODS.map((p) => {
+    const cells = order.map((d) => {
+      const cs = courses.filter((c) => +c.day === d && covers(c, p));
+      if (!cs.length) return `<button class="pc" data-cell="${d}:${p.id}" aria-label="週${DAYS[d]} 第${p.id}節 新增課程"></button>`;
+      const c = cs[0], first = !courses.some((x) => x.id === c.id && +x.day === d && PERIODS.some((q) => q.s < p.s && covers(x, q)));
+      const clash = cs.length > 1;
+      return `<button class="pc has ${clash ? 'clash' : ''}" data-edit="${esc(c.id)}" style="background:${COURSE_COLORS[c.color]}" aria-label="${esc(c.name)} 週${DAYS[d]} 第${p.id}節，點擊編輯">${first ? `<b>${esc(c.name)}</b>${c.building ? `<small>${esc(BUILDINGS[c.building])}</small>` : ''}` : ''}</button>`;
     }).join('');
-    const cells = hours.map((h, i) => `<button class="cell" data-cell="${d}:${h}" style="top:${i * HH}px;height:${HH}px" aria-label="週${DAYS[d]} ${String(h).padStart(2, '0')}:00 新增課程"></button>`).join('');
-    return `<div class="col" style="height:${hours.length * HH}px;--hh:${HH}px">${cells}${evs}</div>`;
+    return `<div class="pl"><b>${p.id}</b><small>${pad(p.h)}:00</small></div>${cells}`;
   }).join('');
-  return `<div class="week" role="group" aria-label="週課表"><div></div>${head}${gutter}${cols}</div>`;
+  return `<div class="pgrid" role="group" aria-label="週課表（節次）">${head}${rows}</div>`;
 }
 
 function listView(courses) {
@@ -41,7 +41,7 @@ function listView(courses) {
 
 export function renderSchedule(ctx) {
   const courses = sortCourses(ctx.state.courses), ed = courses.find((c) => c.id === view.editId) || null;
-  const pf = view.prefill, v = ed || { day: pf?.day ?? (new Date().getDay() || 1), start: pf?.start ?? '09:00', end: pf?.end ?? '10:00', name: '', building: '', color: courses.length % 6 };
+  const pf = view.prefill, v = ed || { day: pf?.day ?? (new Date().getDay() || 1), start: pf?.start ?? '09:00', end: pf?.end ?? '09:50', name: '', building: '', color: courses.length % 6 };
   return `<div class="page-head"><span class="eyebrow">Schedule</span><h1>我的課表</h1><p>規劃器會自動避開上課時間；課程只存在這台裝置。</p></div>
   <div class="grid2" style="align-items:start">
   <section class="card"><div class="card-h"><h2>${ic(ed ? 'edit' : 'plus')}${ed ? '編輯課程' : '新增課程'}</h2></div>
@@ -50,13 +50,15 @@ export function renderSchedule(ctx) {
       <label class="f"><span>課程名稱</span><input name="name" maxlength="50" required value="${esc(v.name)}" autocomplete="off"></label>
       <div class="two"><label class="f"><span>星期</span><select name="day">${DAYS.map((d, i) => `<option value="${i}" ${+v.day === i ? 'selected' : ''}>週${d}</option>`).join('')}</select></label>
       <label class="f"><span>教室建築</span><select name="building"><option value="">未指定</option>${Object.entries(BUILDINGS).map(([k, n]) => `<option value="${k}" ${v.building === k ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label></div>
-      <div class="two"><label class="f"><span>開始</span><input type="time" name="start" required value="${v.start}"></label><label class="f"><span>結束</span><input type="time" name="end" required value="${v.end}"></label></div>
+      <div class="two"><label class="f"><span>開始節次</span><select id="perS">${PERIODS.map((p) => `<option value="${p.id}">${p.id}（${pad(p.h)}:00）</option>`).join('')}</select></label>
+      <label class="f"><span>結束節次</span><select id="perE">${PERIODS.map((p) => `<option value="${p.id}">${p.id}（到 ${pad(p.h)}:50）</option>`).join('')}</select></label></div>
+      <div class="two"><label class="f"><span>開始時間</span><input type="time" name="start" required value="${v.start}"></label><label class="f"><span>結束時間</span><input type="time" name="end" required value="${v.end}"></label></div>
       <div class="f"><span style="display:block;margin-bottom:6px">顏色</span><div class="swatches">${COURSE_COLORS.map((c, i) => `<label><input type="radio" name="color" value="${i}" ${+v.color === i ? 'checked' : ''} aria-label="顏色 ${i + 1}"><i style="background:${c}"></i></label>`).join('')}</div></div>
       <div class="row" style="margin-top:14px"><button class="btn primary" type="submit">${ic('check', 16)}${ed ? '儲存變更' : '加入課表'}</button>${ed ? `<button class="btn" type="button" id="cancelEdit">取消</button><button class="btn danger" type="button" data-del="${esc(ed.id)}">${ic('trash', 16)}刪除</button>` : ''}</div>
     </form></section>
   <section class="card"><div class="card-h"><h2>${ic('calendar')}課表 <small>${courses.length} 堂</small></h2>
     <div class="chips" style="margin:0"><button data-view="week" aria-pressed="${view.mode === 'week'}">週視圖</button><button data-view="list" aria-pressed="${view.mode === 'list'}">清單</button></div></div>
-    ${view.mode === 'week' ? weekGrid(courses) + '<p class="note faint" style="margin-top:8px">點空白格子＝在該時段新增課程；點課程＝編輯或刪除。紅框＝時間重疊。</p>' : listView(courses)}</section></div>`;
+    ${view.mode === 'week' ? weekGrid(courses) + '<p class="note faint" style="margin-top:8px">格式同選課系統 A4 課表。點空白格＝新增（可選結束節次連堂）；點課程＝編輯或刪除。紅框＝時間重疊。</p>' : listView(courses)}</section></div>`;
 }
 
 export function bindSchedule(ctx) {
@@ -70,14 +72,20 @@ export function bindSchedule(ctx) {
     view.editId = null; ctx.save(); ctx.rerender(); ctx.toast('已刪除課程', 'ok');
   }));
   document.querySelectorAll('[data-cell]').forEach((b) => (b.onclick = () => {
-    const [d, h] = b.dataset.cell.split(':').map(Number), pad = (n) => String(n).padStart(2, '0');
-    view.editId = null; view.prefill = { day: d, start: pad(h) + ':00', end: pad(Math.min(h + 1, 23)) + ':00' };
+    const [d, id] = b.dataset.cell.split(':'), p = PERIODS.find((x) => x.id === id);
+    view.editId = null; view.prefill = { day: +d, start: pad(p.h) + ':00', end: pad(p.h) + ':50' };
     ctx.rerender(); const f = document.querySelector('#courseForm'); f?.scrollIntoView({ behavior: 'smooth', block: 'center' }); f?.querySelector('input[name=name]').focus();
   }));
-  const fs = $('#courseForm input[name=start]'), fe = $('#courseForm input[name=end]');
-  const sync = () => { fe.min = fs.value; if (fs.value && fe.value && toMin(fe.value) <= toMin(fs.value)) fe.setCustomValidity('結束時間必須晚於開始時間'); else fe.setCustomValidity(''); };
-  fs.addEventListener('change', () => { if (fs.value && (!fe.value || toMin(fe.value) <= toMin(fs.value))) { const m = Math.min(toMin(fs.value) + 60, 1439); fe.value = String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); } sync(); });
-  fe.addEventListener('change', sync); sync();
+  const fs = $('#courseForm input[name=start]'), fe = $('#courseForm input[name=end]'), pS = $('#perS'), pE = $('#perE');
+  const periodOf = (t, end) => { const m = toMin(t); const hit = end ? [...PERIODS].reverse().find((p) => p.s < m) : PERIODS.find((p) => m < p.s + 60); return (hit || (end ? PERIODS[0] : PERIODS[PERIODS.length - 1])).id; };
+  const syncP = () => { pS.value = periodOf(fs.value, false); pE.value = periodOf(fe.value, true); };
+  const fromP = () => {
+    let a = PERIODS.findIndex((p) => p.id === pS.value), z = PERIODS.findIndex((p) => p.id === pE.value);
+    if (z < a) { z = a; pE.value = pS.value; }
+    fs.value = pad(PERIODS[a].h) + ':00'; fe.value = pad(PERIODS[z].h) + ':50'; fe.setCustomValidity('');
+  };
+  pS.onchange = fromP; pE.onchange = fromP;
+  fs.addEventListener('change', syncP); fe.addEventListener('change', syncP); syncP();
   const cancel = $('#cancelEdit'); if (cancel) cancel.onclick = () => { view.editId = null; view.prefill = null; ctx.rerender(); };
   $('#courseForm').onsubmit = (e) => {
     e.preventDefault();
