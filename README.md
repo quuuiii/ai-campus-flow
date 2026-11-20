@@ -31,3 +31,10 @@ npm run dev
 ## 部署
 
 執行 `npm run build`，將 `dist` 部署至靜態網站服務（例如 Vercel）。
+
+
+## v2 重構摘要
+- 結構：`src/pages/*`（頁面）、`src/engine/*`（排程、人潮）、`src/store.js`（localStorage 驗證/遷移）、`src/data/*`。
+- 指令：`npm test`（node:test）、`npm run build`。
+- 資料誠實：人潮為「觀察／模擬」，目前沒有已訓練的預測模型，詳見 `docs/ai-architecture.md`。
+- 資料庫評估：`docs/supabase-plan.md`、`supabase/schema.sql`（草案，未部署）。

@@ -1,8 +1,5 @@
-// NCU 地點庫、步行時間（預估）與 Demo 情境資料。
-// 所有人潮 / 空位率 / 步行分鐘皆為「模擬或預估值」，非即時資料。
+// NCU 地點庫、步行時間（預估）。所有人潮 / 空位率 / 步行分鐘皆為「模擬或預估值」，非即時資料。
 // 松苑餐廳、第九餐廳目前暫停營業，已先移除；重新營業後再加回 PLACES。
-
-export const DAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
 // 上課建築（課表用）
 export const BUILDINGS = {
@@ -13,17 +10,16 @@ export const BUILDINGS = {
   hss: '人文社會科學大樓',
 };
 
-// 任務類型。flex = 時間不夠時允許彈性縮短
+// 任務類型。flex = 時間不夠時允許彈性縮短；icon 為 icons.js 的圖示名稱
 export const KINDS = {
-  meal: { label: '午餐', icon: '🍱', dur: 30, flex: false, window: [660, 870] },
-  study: { label: '圖書館讀書', icon: '📚', dur: 60, flex: true },
-  homework: { label: '完成作業', icon: '✍️', dur: 60, flex: false },
-  group: { label: '小組討論', icon: '💬', dur: 60, flex: true },
-  errand: { label: '校園事務', icon: '🗂️', dur: 30, flex: true },
+  meal: { label: '用餐', icon: 'meal', dur: 30, flex: false, window: [660, 870] },
+  study: { label: '圖書館讀書', icon: 'study', dur: 60, flex: true },
+  homework: { label: '完成作業', icon: 'homework', dur: 60, flex: false },
+  group: { label: '小組討論', icon: 'group', dur: 60, flex: true },
+  errand: { label: '校園事務', icon: 'errand', dur: 30, flex: true },
 };
 
-// base/peak：人潮 = base + peak × 下課尖峰係數（用餐/辦事）
-// vac：讀書空間在 15:00 的空位率（%）；quiet：安靜程度 1–5
+// base/peak：模擬人潮 = base + peak × 下課尖峰係數（用餐/辦事）；vac：讀書空間 15:00 的模擬空位率（%）；quiet：安靜程度 1–5
 export const PLACES = {
   backdoor: { id: 'backdoor', name: '後門餐飲區', short: '後門', kinds: ['meal'], eat: 30, base: 30, peak: 55 },
   female14: { id: 'female14', name: '女十四舍 B1 商場', short: '女十四', kinds: ['meal'], eat: 30, base: 25, peak: 30 },
@@ -36,8 +32,9 @@ export const PLACES = {
 
 export const placeName = (id) => PLACES[id]?.name || BUILDINGS[id] || '起點';
 export const placeShort = (id) => PLACES[id]?.short || BUILDINGS[id] || '起點';
+export const originOptions = () => [...Object.entries(BUILDINGS).map(([id, name]) => [id, name]), ...Object.values(PLACES).map((p) => [p.id, p.name])];
 
-// 兩點間預估步行分鐘（人工估算，Demo 用；實際請以地圖為準）
+// 兩點間預估步行分鐘（人工估算；實際請以地圖為準）
 const W = {
   'mgmt2|backdoor': 8, 'mgmt2|female14': 9, 'mgmt2|nightmarket': 11,
   'mgmt2|mainlib': 8, 'mgmt2|zhongzheng': 7, 'mgmt2|youyi': 6, 'mgmt2|admin': 6,
@@ -47,25 +44,12 @@ const W = {
   'mainlib|zhongzheng': 3, 'mainlib|youyi': 5, 'zhongzheng|youyi': 5,
   'backdoor|nightmarket': 4, 'backdoor|female14': 8, 'nightmarket|female14': 7,
 };
+export const DEFAULT_WALK = 7;
 export const walk = (a, b) => {
   if (a === b) return 0;
   if (!a || !b) return 5;
-  return W[a + '|' + b] ?? W[b + '|' + a] ?? 7;
+  return W[a + '|' + b] ?? W[b + '|' + a] ?? DEFAULT_WALK;
 };
 
 export const PROVENANCE =
-  '數據模型（模擬）：以「假設的歷史選課人數分布」與「校園 Wi-Fi 連線密度參數」搭配下課尖峰規則估算，並非即時感測或真實統計；步行時間為人工預估。正式上線需串接選課系統與 Wi-Fi 匿名計數。';
-
-// ── Demo 情境（中央大學學生日常）──
-export const DEMO_TEXT = '我想吃午餐、去圖書館讀書一小時，還要在五點前完成一份作業。';
-export const demoCourses = () => {
-  const rows = [];
-  let id = 1;
-  for (const day of ['1', '2', '3', '4', '5']) {
-    rows.push(
-      { id: id++, day, start: '09:00', end: '12:00', name: '系統分析與設計', building: 'mgmt2' },
-      { id: id++, day, start: '13:00', end: '15:00', name: '企業資料通訊', building: 'eng5' },
-    );
-  }
-  return rows;
-};
+  '數據來源分三類：「觀察」＝團隊現場觀察紀錄；「模擬」＝人工設定的示範參數（假設的選課人數分布、Wi-Fi 密度與下課尖峰規則），並非即時感測；「模型」＝尚未實作，目前不會出現。步行時間為人工預估。';

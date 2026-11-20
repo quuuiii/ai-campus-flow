@@ -1,44 +1,50 @@
+// 入口：載入資料、簡易路由、共用 ctx（save / toast / go / rerender）
 import './style.css';
-import { BUILDINGS, PLACES } from './data.js';
-import { renderDashboard, bindDashboard, demoState } from './dashboard.js';
-const REPORT_KEY='campus-flow-observations-v1';
-const K='campus-flow-v2',days=['日','一','二','三','四','五','六'];
-const places=[{name:'校園餐廳（示範）',kind:'用餐',levels:[2,3,5,5,4,2,3,4]},{name:'圖書館（示範）',kind:'讀書',levels:[1,2,3,4,5,4,3,2]},{name:'公共空間（示範）',kind:'辦事',levels:[1,2,2,3,3,2,2,1]}];
-const campusLocations=[
-{name:'國立中央大學圖書館',kind:'讀書',description:'閱讀、自習與資料查詢',query:'國立中央大學 總圖書館'},
-{name:'國立中央大學志希館',kind:'用餐',description:'校內生活與餐飲區域，請確認實際店家營業狀況',query:'中央大學 志希館'},
-{name:'國立中央大學行政大樓',kind:'辦事',description:'行政事務地點，請先確認承辦單位',query:'國立中央大學 行政大樓'},
-{name:'國立中央大學教研大樓',kind:'上課',description:'教學與研究空間',query:'國立中央大學 教研大樓'},
-{name:'國立中央大學中正圖書館',kind:'讀書',description:'校園圖書館建築，請確認開放空間',query:'國立中央大學 中正圖書館'},
-{name:'國立中央大學百花川',kind:'休閒',description:'校園散步與休息地點',query:'國立中央大學 百花川'}
-];
-const directionsUrl=(from,to)=>'https://www.google.com/maps/dir/?api=1&travelmode=walking&origin='+encodeURIComponent(from)+'&destination='+encodeURIComponent(to);
+import { ic } from './icons.js';
+import { COURSE_COLORS } from './data/demo.js';
+import { loadState, saveState, loadObservations, saveObservations } from './store.js';
+import { renderHome, bindHome } from './pages/home.js';
+import { renderPlan, bindPlan } from './pages/plan.js';
+import { renderSchedule, bindSchedule } from './pages/schedule.js';
+import { renderExplore, bindExplore } from './pages/explore.js';
+import { renderSettings, bindSettings } from './pages/settings.js';
 
-const foodDirectory=[{"area":"後門","name":"竹香自助餐","type":"便當"},{"area":"後門","name":"惟克美而美","type":"早餐"},{"area":"後門","name":"哈堡堡","type":"早午餐"},{"area":"後門","name":"萊姆斯","type":"早餐"},{"area":"後門","name":"達啵廚房","type":"簡餐"},{"area":"後門","name":"福泉豆花麵食店","type":"麵食甜品"},{"area":"後門","name":"飽咖咖","type":"簡餐"},{"area":"後門","name":"新福牛肉麵","type":"麵食"},{"area":"後門","name":"街角216","type":"簡餐"},{"area":"後門","name":"迷路義麵屋","type":"義大利麵"},{"area":"後門","name":"白鬍子平價牛排","type":"牛排"},{"area":"後門","name":"馬爾波咖啡","type":"咖啡簡餐"},{"area":"後門","name":"歐姆萊斯","type":"日式"},{"area":"後門","name":"Daddy's Hamburg","type":"漢堡"},{"area":"後門","name":"Sidewalk人行道蔬食","type":"素食"},{"area":"後門","name":"Backdoor Café 胡思胡作","type":"咖啡"},{"area":"後門","name":"No.17 White House","type":"義大利麵"},{"area":"後門","name":"麥克小姐早午餐","type":"早午餐"},{"area":"後門","name":"八方雲集","type":"鍋貼"},{"area":"後門","name":"路易莎咖啡","type":"咖啡"},{"area":"宵夜街","name":"無敵蛋餅","type":"蛋餅"},{"area":"宵夜街","name":"來客餐坊","type":"簡餐"},{"area":"宵夜街","name":"霸王香雞排","type":"炸物"},{"area":"宵夜街","name":"中央餐車雞排","type":"炸物"},{"area":"宵夜街","name":"小籠包","type":"小吃"},{"area":"宵夜街","name":"一億園","type":"小吃"},{"area":"宵夜街","name":"麥味登","type":"早餐"},{"area":"宵夜街","name":"粥王","type":"粥品"},{"area":"宵夜街","name":"川一品鍋","type":"火鍋"},{"area":"宵夜街","name":"香煎小舖","type":"小吃"},{"area":"宵夜街","name":"早安美芝城","type":"早餐"},{"area":"宵夜街","name":"夠義式義大利麵","type":"義大利麵"},{"area":"宵夜街","name":"幸福廚房","type":"簡餐"},{"area":"宵夜街","name":"傻師傅湯包","type":"湯包"},{"area":"後門","name":"108果汁","type":"飲料"}];
-const mapUrl=p=>'https://www.openstreetmap.org/search?query='+encodeURIComponent(p.query);
-let state;try{state=JSON.parse(localStorage.getItem(K))}catch{state=null}if(!state||!Array.isArray(state.courses)||!state.plan)state=demoState();
-const save=()=>localStorage.setItem(K,JSON.stringify(state)),el=s=>document.querySelector(s),min=s=>{let [h,m]=s.split(':').map(Number);return h*60+m},fmt=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0'),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),level=(p,h)=>p.levels[Math.max(0,Math.min(7,Math.floor((h-9)/1.5)))],label=n=>n<=2?'低':n===3?'中':'高';
-function free(day,a,b){let slots=[],cursor=a;for(const c of state.courses.filter(c=>+c.day===+day).sort((x,y)=>min(x.start)-min(y.start))){let s=min(c.start),e=min(c.end);if(s>cursor)slots.push([cursor,Math.min(s,b)]);cursor=Math.max(cursor,e)}if(cursor<b)slots.push([cursor,b]);return slots.filter(([x,y])=>y>x)}
-function page(){let tab=state.tab,body=tab==='schedule'?schedule():tab==='explore'?explore():tab==='settings'?settings():renderDashboard(state);el('#app').innerHTML='<header><strong>↗ Campus Flow</strong><small>SMART CAMPUS · V2.0</small></header><main>'+body+'</main><nav>'+[['home','✦','規劃'],['schedule','▦','課表'],['explore','◎','探索'],['settings','⚙','設定']].map(([id,ic,t])=>'<button data-tab="'+id+'" class="'+(id===tab?'active':'')+'">'+ic+'<small>'+t+'</small></button>').join('')+'</nav>';document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;save();page()});if(tab==='schedule')bindSchedule();if(tab==='explore')bindExplore();if(tab==='home')bindDashboard(state,{save,rerender:()=>{const y=scrollY;page();scrollTo(0,y)}});if(tab==='settings')el('#reset').onclick=()=>{if(confirm('清除本機資料並還原 Demo 情境？')){localStorage.removeItem(K);state=demoState();save();page()}}}
-function schedule(){return '<h1>我的課表</h1><p>新增課程，規劃器會自動避開上課時間。</p><section class="card"><form id="course"><label>課程名稱<input name="name" required maxlength="50" placeholder="資料庫管理"></label><label>星期<select name="day">'+days.map((d,i)=>'<option value="'+i+'">星期'+d+'</option>').join('')+'</select></label><label>教室所在建築<select name="building"><option value="">未指定</option>'+Object.entries(BUILDINGS).map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select></label><div class="two"><label>開始<input type="time" name="start" value="09:00" required></label><label>結束<input type="time" name="end" value="10:00" required></label></div><button class="primary">新增課程</button></form></section><h2>已設定課程</h2>'+state.courses.map(c=>'<section class="card course"><div><small>星期'+days[c.day]+'　'+esc(c.start)+'–'+esc(c.end)+(c.building?' · '+esc(BUILDINGS[c.building]||''):'')+'</small><h3>'+esc(c.name)+'</h3></div><button data-delete="'+c.id+'">刪除</button></section>').join('')}
-function explore(){return '<div class="explore-head"><small>EXPLORE NCU</small><h1>探索中央大學</h1><p>校園地圖、地點與餐飲資料。排程用的人潮數字請看「規劃」頁。</p></div>'+
-'<section class="map-panel"><div class="map-toolbar"><b>校園地圖</b><a href="https://www.openstreetmap.org/#map=16/24.968/121.195" target="_blank" rel="noopener noreferrer">放大查看 ↗</a></div><iframe title="中央大學周邊 OpenStreetMap 地圖" loading="lazy" referrerpolicy="no-referrer" src="https://www.openstreetmap.org/export/embed.html?bbox=121.185%2C24.961%2C121.205%2C24.976&layer=mapnik&marker=24.968%2C121.195"></iframe><p class="map-caption">© OpenStreetMap contributors · 標記為校園概略中心，非各建築物精確位置。</p></section>'+
-'<details class="fold" open><summary>校園地點搜尋</summary><div class="foldbody"><div class="two"><label>類型<select id="category"><option value="全部">全部</option>'+['讀書','用餐','辦事','上課','休閒'].map(k=>'<option value="'+k+'">'+k+'</option>').join('')+'</select></label><label>搜尋<input id="placeSearch" type="search" placeholder="圖書館、行政大樓…"></label></div><div id="locations"></div></div></details>'+
-'<details class="fold"><summary>後門・宵夜街餐飲目錄</summary><div class="foldbody"><p class="note">候選名單含歷史資料，尚未逐店核實是否仍營業，請以店家公告為準。</p><div class="two"><label>區域<select id="foodArea"><option value="全部">全部</option><option value="後門">後門</option><option value="宵夜街">宵夜街</option></select></label><label>搜尋<input id="foodSearch" type="search" placeholder="店名、料理類型"></label></div><div id="foodResults" class="scrollbox"></div></div></details>'+
-'<details class="fold"><summary>現場人潮觀察紀錄（備用）</summary><div class="foldbody"><p class="note">團隊主要用共用表單記錄；這裡的紀錄只存在這台裝置，可匯出 CSV。</p><form id="reportForm"><label>觀察地點<select name="place">'+Object.values(PLACES).map((p,i)=>'<option value="'+i+'">'+p.name+'</option>').join('')+'</select></label><div class="two"><label>擁擠程度<select name="crowd"><option value="1">1 · 非常空</option><option value="2">2 · 偏空</option><option value="3" selected>3 · 普通</option><option value="4">4 · 偏擠</option><option value="5">5 · 非常擁擠</option></select></label><label>觀察方式<select name="method"><option value="onsite">現場觀察</option><option value="manual">事後紀錄</option></select></label></div><div class="row"><button class="primary">儲存</button><button type="button" id="exportReports" class="outline">匯出 CSV</button></div></form><div id="reportStats"></div></div></details>'}
-function settings(){return '<h1>設定</h1><section class="card"><h2>關於 Campus Flow</h2><p>課表資料僅儲存於本機瀏覽器。人潮與空位率為模擬估算值，排程為規則式演算法，尚未連接 AI 模型。</p><button id="reset">清除並還原 Demo 情境</button></section>'}
-function bindSchedule(){el('#course').onsubmit=e=>{e.preventDefault();let c=Object.fromEntries(new FormData(e.target));if(min(c.end)<=min(c.start))return alert('結束時間必須晚於開始時間');if(state.courses.some(x=>x.day===c.day&&min(c.start)<min(x.end)&&min(c.end)>min(x.start)))return alert('課程時間衝突');state.courses.push({...c,id:Date.now()});save();page()};document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>{state.courses=state.courses.filter(c=>c.id!==+b.dataset.delete);save();page()})}
-function bindExplore(){
-const category=el('#category'),search=el('#placeSearch');
-function renderPlaces(){const q=search.value.trim().toLowerCase(),items=campusLocations.filter(p=>(category.value==='全部'||p.kind===category.value)&&(!q||(p.name+p.description).toLowerCase().includes(q)));el('#locations').innerHTML=items.length?items.map(p=>'<article class="place"><div><small>'+p.kind+'</small><h3>'+p.name+'</h3><p>'+p.description+'</p></div><a href="'+mapUrl(p)+'" target="_blank" rel="noopener noreferrer" aria-label="搜尋'+p.name+'的地圖位置">地圖搜尋 ↗</a></article>').join(''):'<p class="note">沒有符合條件的地點，試試其他關鍵字。</p>'}
-category.onchange=renderPlaces;search.oninput=renderPlaces;renderPlaces();
-const readReports=()=>{try{const x=JSON.parse(localStorage.getItem(REPORT_KEY)||'[]');return Array.isArray(x)?x:[]}catch{return []}};
-const renderStats=()=>{const rows=readReports(),last=rows.slice(-5).reverse();el('#reportStats').innerHTML='<p class="note">本機已記錄 '+rows.length+' 筆（僅供資料蒐集，尚未訓練 AI 模型）</p>'+last.map(x=>'<div class="report-row"><span>'+esc(x.place)+' · '+esc(x.timestamp.slice(0,16).replace('T',' '))+'</span><b>'+x.crowd+'/5</b></div>').join('')};
-el('#reportForm').onsubmit=e=>{e.preventDefault();const d=new FormData(e.target),idx=Number(d.get('place')),crowd=Number(d.get('crowd'));if(!Object.values(PLACES)[idx]||crowd<1||crowd>5)return alert('請選擇有效資料');const rows=readReports();rows.push({timestamp:new Date().toISOString(),place:Object.values(PLACES)[idx].name,crowd,method:d.get('method')});localStorage.setItem(REPORT_KEY,JSON.stringify(rows));renderStats();alert('觀察紀錄已儲存在本機')};
-el('#exportReports').onclick=()=>{const rows=readReports();if(!rows.length)return alert('目前沒有可匯出的紀錄');const quote=x=>'"'+String(x).replace(/"/g,'""')+'"';const csv=['timestamp,place,crowd,method',...rows.map(x=>[x.timestamp,x.place,x.crowd,x.method].map(quote).join(','))].join('\r\n');const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='campus-flow-observations.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
-renderStats();
-const foodArea=el('#foodArea'),foodSearch=el('#foodSearch');
-function renderFood(){const q=foodSearch.value.trim().toLowerCase(),items=foodDirectory.filter(p=>(foodArea.value==='全部'||p.area===foodArea.value)&&(!q||(p.name+p.type).toLowerCase().includes(q)));el('#foodResults').innerHTML='<p class="note">顯示 '+items.length+' 間候選店家 · 營業狀態待確認</p>'+items.map(p=>'<article class="food-item"><div><small>'+p.area+' · '+p.type+'</small><b>'+esc(p.name)+'</b></div><a target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent('中央大學 '+p.area+' '+p.name)+'">地圖搜尋 ↗</a></article>').join('')}
-foodArea.onchange=renderFood;foodSearch.oninput=renderFood;renderFood();
+const TABS = [['home', 'home', '首頁', renderHome, bindHome], ['plan', 'sparkles', '規劃', renderPlan, bindPlan], ['schedule', 'calendar', '課表', renderSchedule, bindSchedule], ['explore', 'compass', '探索', renderExplore, bindExplore], ['settings', 'settings', '設定', renderSettings, bindSettings]];
+
+const { state, report } = loadState();
+let observations = loadObservations().list;
+document.documentElement.style.cssText += COURSE_COLORS.map((c, i) => `--c${i}:${c};`).join('');
+
+const toast = (msg, type = '') => {
+  const box = document.getElementById('toast'); if (!box) return;
+  const t = document.createElement('div'); t.className = 'toast ' + type; t.setAttribute('role', 'status'); t.textContent = msg;
+  box.appendChild(t); setTimeout(() => t.remove(), 3200);
+};
+const ctx = {
+  state, toast,
+  obs: () => observations,
+  setObs: (l) => { observations = l; return saveObservations(l); },
+  save: () => { if (!saveState(state)) toast('無法儲存：瀏覽器儲存空間不可用，資料將在關閉後消失', 'bad'); },
+  go: (tab) => { state.ui.tab = tab; ctx.save(); render(); window.scrollTo(0, 0); },
+  rerender: () => render(true),
+};
+
+function render(keepScroll = false) {
+  const y = window.scrollY;
+  const cur = TABS.find((t) => t[0] === state.ui.tab) || TABS[0];
+  let body;
+  try { body = cur[3](ctx); } catch (e) { console.error(e); body = `<div class="banner bad">${ic('bad', 18)}<div>這個頁面發生錯誤，已保留你的資料。請重新整理，或到「設定」頁匯出／清除資料。</div></div>`; }
+  document.getElementById('app').innerHTML = `<header class="topbar"><div class="brand">${ic('route', 22)}Campus Flow</div><small>NCU</small></header>
+  <main id="main" tabindex="-1">${body}</main>
+  <nav class="tabbar" aria-label="主選單">${TABS.map(([id, icon, label]) => `<button data-tab="${id}" ${id === cur[0] ? 'aria-current="page"' : ''}>${ic(icon, 22)}<span>${label}</span></button>`).join('')}</nav>`;
+  document.querySelectorAll('[data-tab]').forEach((b) => (b.onclick = () => ctx.go(b.dataset.tab)));
+  try { cur[4](ctx); } catch (e) { console.error(e); }
+  if (keepScroll) window.scrollTo(0, y);
 }
-page();
+
+document.body.insertAdjacentHTML('beforeend', '<div id="toast" aria-live="polite"></div>');
+render();
+if (report.corruptBackup) toast('偵測到損壞的資料，已備份後重設', 'bad');
+else if (report.migrated) toast('已從舊版載入你的課表', 'ok');
+else if (report.dropped) toast(`有 ${report.dropped} 筆課程資料無效，已略過`, '');
+if ('serviceWorker' in navigator && import.meta.env.PROD) navigator.serviceWorker.register('./sw.js').catch(() => {});
