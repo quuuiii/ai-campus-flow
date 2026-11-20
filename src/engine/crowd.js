@@ -4,6 +4,7 @@
 //   model     模型預測：尚未實作，保留給日後（目前不會回傳）
 import { PLACES } from '../data/places.js';
 import { nowTW } from '../util.js';
+import { evaluate, kernelPredict, MIN_SAMPLES as MODEL_MIN_SAMPLES } from './model.js';
 
 export const SOURCE_LABEL = { observed: '觀察', simulated: '模擬', model: '模型' };
 export const MIN_SAMPLES = 3;      // 少於此筆數不使用觀察資料
@@ -16,15 +17,48 @@ const lunchPeak = (t) =>
 
 export const vacancy = (p, t) => Math.max(10, Math.round(p.vac - 3 * Math.max(0, t / 60 - 15)));
 export const simulate = (p, t) => (p.vac != null ? 100 - vacancy(p, t) : Math.round(p.base + p.peak * lunchPeak(t)));
-export const queueMin = (pct) => (pct >= 70 ? Math.round((pct - 68) * 0.75) : 0);
+// 排隊分鐘：由模擬/觀察人潮推得的粗估（公式為人工設定，未經實測校準），取 5 分鐘為單位避免看似精確
+export const queueMin = (pct) => (pct >= 70 ? Math.max(5, Math.round(((pct - 68) * 0.75) / 5) * 5) : 0);
+// 顯示用：人潮百分比取 5% 為單位
+export const approx = (pct) => Math.round(pct / 5) * 5;
 export const levelOf = (pct) => (pct >= 70 ? '高' : pct >= 40 ? '中' : '低');
 export const sufficiency = (n) => (n < MIN_SAMPLES ? '不足' : n < FULL_WEIGHT_AT ? '偏少' : n < 16 ? '尚可' : '充足');
 
 export const obsPlaceId = (o) => o.placeId || Object.values(PLACES).find((p) => p.name === o.place)?.id || null;
 
+// ── 統計模型（通過留一日驗證的地點才啟用）──
+const cache = new WeakMap();
+export function samplesFor(placeId, observations) {
+  const out = [];
+  for (const o of observations) {
+    if (obsPlaceId(o) !== placeId || !OBS_PCT[o.crowd]) continue;
+    const t = nowTW(new Date(o.timestamp));
+    if (Number.isNaN(t.minute)) continue;
+    out.push({ day: t.day, minute: t.minute, pct: OBS_PCT[o.crowd], date: String(o.timestamp).slice(0, 10) });
+  }
+  return out;
+}
+export function modelEval(place, observations) {
+  let m = cache.get(observations);
+  if (!m) { m = new Map(); cache.set(observations, m); }
+  if (!m.has(place.id)) m.set(place.id, evaluate(samplesFor(place.id, observations), (min) => simulate(place, min)));
+  return m.get(place.id);
+}
+// 各地點模型狀態；mode：demo＝無任何地點通過驗證（全部為模擬／混合），partial／model
+export function modelReport(observations = []) {
+  const rows = Object.values(PLACES).map((p) => ({ place: p, ...modelEval(p, observations) }));
+  const ready = rows.filter((r) => r.status === 'ready').length;
+  return { rows, ready, mode: ready === 0 ? 'demo' : ready === rows.length ? 'model' : 'partial', minSamples: MODEL_MIN_SAMPLES };
+}
+
 // 預測某地點在 (星期, 分鐘) 的人潮。資料不足時回傳透明的「模擬」值。
 export function predictCrowd(place, minute, observations = [], day = null) {
   const sim = simulate(place, minute);
+  const ev = observations.length >= MODEL_MIN_SAMPLES ? modelEval(place, observations) : null;
+  if (ev?.status === 'ready' && day != null) {
+    const k = kernelPredict(samplesFor(place.id, observations), day, minute, sim);
+    if (k.weight >= 1) return { pct: Math.round(k.pct), source: 'model', n: ev.n, sufficiency: sufficiency(ev.n), note: `統計模型（核平滑回歸，${ev.n} 筆／${ev.dates} 天；留一日驗證 MAE ${ev.maeModel.toFixed(1)} 對模擬 ${ev.maeSim.toFixed(1)}）` };
+  }
   let wSum = 0, vSum = 0, n = 0;
   for (const o of observations) {
     if (obsPlaceId(o) !== place.id || !OBS_PCT[o.crowd]) continue;

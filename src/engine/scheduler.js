@@ -1,7 +1,7 @@
 // 規則式排程引擎（非機器學習）：解析需求 → 算空堂 → 依偏好挑地點 → 衝突偵測 → 一鍵重新調配
 // 保證：任務只會落在空堂內，不與課程或其他任務重疊；步行、排隊與緩衝都計入。
 import { PLACES, KINDS, BUILDINGS, walk, placeName } from '../data/places.js';
-import { queueMin, SOURCE_LABEL, defaultCrowdFn } from './crowd.js';
+import { queueMin, approx, SOURCE_LABEL, defaultCrowdFn } from './crowd.js';
 import { toMin, fmt } from '../util.js';
 
 // ── 自然語言需求解析（規則式）──
@@ -235,18 +235,18 @@ export function explain(it) {
   const t = it.task, p = it.place, out = [];
   const fromName = it.from ? placeName(it.from) : '目前位置';
   const srcTag = SOURCE_LABEL[it.src?.source] || '模擬';
+  const walkTxt = `從${fromName}步行約 ${it.walkIn} 分（預估）`;
   if (t.kind === 'meal') {
-    out.push(`人潮 ${it.pct}%（${srcTag}）｜預估排隊 ${it.queue} 分｜從${fromName}步行 ${it.walkIn} 分${it.slot.next ? `、前往${BUILDINGS[it.slot.next]}僅 ${it.walkOut} 分` : ''}`);
+    out.push(`人潮約 ${approx(it.pct)}%（${srcTag}）｜${it.queue ? `估計排隊約 ${it.queue} 分` : '預期不需排隊'}｜${walkTxt}${it.slot.next ? `、前往${BUILDINGS[it.slot.next]}約 ${it.walkOut} 分` : ''}`);
     const w = it.worst;
-    if (w && w.place?.id !== p.id && w.pct >= 70) out.push(`避開 ${w.place?.name || '擁擠地點'}：下課尖峰 ${w.pct}% 擁擠、預估排隊 ${w.queue} 分，可能壓縮到${it.slot.nextName ? '「' + it.slot.nextName + '」' : '下一堂課'}的準備時間`);
+    if (w && w.place?.id !== p.id && w.pct >= 70) out.push(`避開 ${w.place?.name || '擁擠地點'}：同時段人潮約 ${approx(w.pct)}%（${SOURCE_LABEL[w.src?.source] || '模擬'}）、估計排隊約 ${w.queue} 分，可能壓縮到${it.slot.nextName ? '「' + it.slot.nextName + '」' : '下一堂課'}的準備時間`);
     if (p.takeaway) out.push('外帶可縮短用餐時間，把空檔留給下一件事');
     if (it.slack != null) out.push(`預留 ${it.slack} 分鐘緩衝，確保準時到${BUILDINGS[it.slot.next] || '下一堂課'}`);
   } else if (t.kind === 'study' || t.kind === 'homework' || t.kind === 'group') {
-    out.push(`空位率 ${100 - it.pct}%（${srcTag}）｜安靜程度 ${p.quiet}/5｜距${it.from ? placeName(it.from) : '目前位置'}步行 ${it.walkIn} 分`);
+    out.push(`空位率約 ${approx(100 - it.pct)}%（${srcTag}）｜安靜程度 ${p.quiet}/5（團隊假設，未實測）｜${walkTxt}`);
     if (it.dur >= 50 && t.kind !== 'group') out.push('專注模式：25 分鐘專注 + 5 分鐘休息，重複兩輪');
-    if (p.quiet <= 2) out.push('此處較吵雜，適合討論，不適合需要安靜的作業');
   } else {
-    out.push(`人潮 ${it.pct}%（${srcTag}）｜步行 ${it.walkIn} 分`);
+    out.push(`人潮約 ${approx(it.pct)}%（${srcTag}）｜${walkTxt}`);
   }
   if (it.src?.note) out.push(`資料說明：${it.src.note}`);
   if (t.deadline != null) out.push(it.deadlineSlack === 0 ? `剛好在 ${fmt(t.deadline)} 前完成（無額外緩衝）` : `預計 ${fmt(it.end)} 完成，距 ${fmt(t.deadline)} 截止還有 ${it.deadlineSlack} 分`);

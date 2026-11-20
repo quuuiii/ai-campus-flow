@@ -4,7 +4,7 @@ import { ic } from '../icons.js';
 import { BUILDINGS, KINDS, PROVENANCE, placeName, placeShort, originOptions } from '../data/places.js';
 import { DEMO_TEXT } from '../data/demo.js';
 import { buildPlan, reallocate, explain } from '../engine/scheduler.js';
-import { defaultCrowdFn, SOURCE_LABEL } from '../engine/crowd.js';
+import { defaultCrowdFn, approx, SOURCE_LABEL } from '../engine/crowd.js';
 import { taskState, demoState } from '../store.js';
 
 const MODES = [['crowd', 'leaf', '避開人潮'], ['walk', 'walk', '最短步行'], ['focus', 'target', '專注效率']];
@@ -76,12 +76,12 @@ function slotBlock(sl, i, plan, pl) {
 function taskCard(it, pl) {
   const t = it.task, k = KINDS[t.kind], done = !!pl.done[t.id], idx = pl.order.indexOf(t.id);
   const study = ['study', 'homework', 'group'].includes(t.kind);
-  const pill = study ? `<i class="pill ${crowdCls(it.pct)}">空位 ${100 - it.pct}%</i><i class="pill q">安靜 ${it.place.quiet}/5</i>` : `<i class="pill ${crowdCls(it.pct)}">人潮 ${it.pct}%</i>${it.queue ? `<i class="pill hi">排隊約 ${it.queue} 分</i>` : ''}`;
+  const pill = study ? `<i class="pill ${crowdCls(it.pct)}">空位約 ${approx(100 - it.pct)}%</i><i class="pill q">安靜 ${it.place.quiet}/5 <small>假設</small></i>` : `<i class="pill ${crowdCls(it.pct)}">人潮約 ${approx(it.pct)}%</i>${it.queue ? `<i class="pill hi">估計排隊 ${it.queue} 分</i>` : ''}`;
   const reasons = explain(it);
   const main = ['避開', '彈性縮短', '剛好', '預計', '專注模式'].map((p) => reasons.find((r) => r.startsWith(p))).find(Boolean) || reasons[0];
   const rest = reasons.filter((r) => r !== main);
   const stay = it.from === it.place.id;
-  const route = `${stay ? '' : esc(it.from ? placeShort(it.from) : '目前位置') + ` <i>→ 步行${it.walkIn}分 →</i> `}<b>${esc(it.place.short)}</b>${stay ? ' <i>（不用移動）</i>' : ''}${it.slot.next ? ` <i>→ 步行${it.walkOut}分 →</i> ${esc(BUILDINGS[it.slot.next])}` : ''}`;
+  const route = `${stay ? '' : esc(it.from ? placeShort(it.from) : '目前位置') + ` <i>→ 步行約${it.walkIn}分 →</i> `}<b>${esc(it.place.short)}</b>${stay ? ' <i>（不用移動）</i>' : ''}${it.slot.next ? ` <i>→ 步行約${it.walkOut}分 →</i> ${esc(BUILDINGS[it.slot.next])}` : ''}`;
   const alts = it.alts.filter((a) => !a.picked);
   const tags = [srcTag(it.src.source)];
   if (it.shrunk > 0) tags.push(`<i class="tag warn">彈性縮短 ${it.shrunk} 分</i>`);
@@ -90,7 +90,7 @@ function taskCard(it, pl) {
   return `<article class="tcard ${done ? 'done' : ''}">
     <div class="th"><span class="tk">${ic(k.icon, 16)}${k.label}</span><time>${fmt(it.start)}–${fmt(it.end)}</time></div>
     <h3>${esc(it.place.name)}</h3><div class="pills">${pill}${tags.join('')}</div>
-    <p class="route">${route}</p><p class="why1">${esc(main)}</p>
+    <p class="route">${route}</p>${stay && !it.queue ? '' : `<p class="route"><i>${it.from && !stay ? '約 ' + fmt(it.arrive) + ' 抵達' : ''}${it.queue ? '，估計排隊約 ' + it.queue + ' 分後開始' : ''}</i></p>`}<p class="why1">${esc(main)}</p>
     <div class="row">
       <button class="btn sm ${done ? 'primary' : ''}" data-done="${t.id}" aria-pressed="${done}">${ic(done ? 'done' : 'square', 16)}${done ? '已完成' : '完成'}</button>
       ${alts.length ? `<button class="btn sm" data-alt="${t.id}">${ic('refresh', 16)}換地點</button>` : ''}
@@ -98,7 +98,7 @@ function taskCard(it, pl) {
     </div>
     <details class="more"><summary>${ic('info', 16)}理由、其他地點、順序</summary>
       ${rest.length ? `<ul class="why">${rest.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
-      ${alts.map((a) => `<button class="altrow" data-pick="${t.id}:${a.id}"><span>${esc(a.name)}</span><small>${study ? '空位 ' + (100 - a.pct) + '%' : '人潮 ' + a.pct + '%' + (a.queue ? ' · 排隊 ' + a.queue + ' 分' : '')} · 步行 ${a.walk} 分 · ${SOURCE_LABEL[a.src?.source] || '模擬'}</small></button>`).join('')}
+      ${alts.map((a) => `<button class="altrow" data-pick="${t.id}:${a.id}"><span>${esc(a.name)}</span><small>${study ? '空位約 ' + approx(100 - a.pct) + '%' : '人潮約 ' + approx(a.pct) + '%' + (a.queue ? ' · 估計排隊 ' + a.queue + ' 分' : '')} · 步行約 ${a.walk} 分 · ${SOURCE_LABEL[a.src?.source] || '模擬'}</small></button>`).join('')}
       <div class="row" style="margin-top:8px"><button class="btn sm" data-move="${t.id}:-1" ${idx <= 0 ? 'disabled' : ''}>${ic('up', 16)}提早</button><button class="btn sm" data-move="${t.id}:1" ${idx >= pl.order.length - 1 ? 'disabled' : ''}>${ic('down', 16)}延後</button></div>
     </details></article>`;
 }
