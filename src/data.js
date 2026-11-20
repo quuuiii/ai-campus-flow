@@ -1,5 +1,6 @@
 // NCU 地點庫、步行時間（預估）與 Demo 情境資料。
 // 所有人潮 / 空位率 / 步行分鐘皆為「模擬或預估值」，非即時資料。
+// 松苑餐廳、第九餐廳目前暫停營業，已先移除；重新營業後再加回 PLACES。
 
 export const DAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -24,8 +25,7 @@ export const KINDS = {
 // base/peak：人潮 = base + peak × 下課尖峰係數（用餐/辦事）
 // vac：讀書空間在 15:00 的空位率（%）；quiet：安靜程度 1–5
 export const PLACES = {
-  songyuan: { id: 'songyuan', name: '松苑餐廳', short: '松苑', kinds: ['meal'], eat: 30, base: 30, peak: 58 },
-  dorm9: { id: 'dorm9', name: '第九餐廳（男九舍旁）', short: '第九餐廳', kinds: ['meal'], eat: 30, base: 22, peak: 20 },
+  backdoor: { id: 'backdoor', name: '後門餐飲區', short: '後門', kinds: ['meal'], eat: 30, base: 30, peak: 55 },
   female14: { id: 'female14', name: '女十四舍 B1 商場', short: '女十四', kinds: ['meal'], eat: 30, base: 25, peak: 30 },
   nightmarket: { id: 'nightmarket', name: '宵夜街（外帶）', short: '宵夜街外帶', kinds: ['meal'], eat: 20, takeaway: true, base: 24, peak: 24 },
   mainlib: { id: 'mainlib', name: '總圖書館 閱覽區', short: '總圖書館', kinds: ['study', 'homework'], vac: 68, quiet: 4 },
@@ -39,13 +39,13 @@ export const placeShort = (id) => PLACES[id]?.short || BUILDINGS[id] || '起點'
 
 // 兩點間預估步行分鐘（人工估算，Demo 用；實際請以地圖為準）
 const W = {
-  'mgmt2|songyuan': 4, 'mgmt2|dorm9': 4, 'mgmt2|female14': 9, 'mgmt2|nightmarket': 11,
+  'mgmt2|backdoor': 8, 'mgmt2|female14': 9, 'mgmt2|nightmarket': 11,
   'mgmt2|mainlib': 8, 'mgmt2|zhongzheng': 7, 'mgmt2|youyi': 6, 'mgmt2|admin': 6,
-  'eng5|songyuan': 4, 'eng5|dorm9': 5, 'eng5|female14': 7, 'eng5|nightmarket': 7,
+  'eng5|backdoor': 6, 'eng5|female14': 7, 'eng5|nightmarket': 7,
   'eng5|mainlib': 6, 'eng5|zhongzheng': 5, 'eng5|youyi': 4, 'eng5|admin': 8,
   'mgmt2|eng5': 9,
   'mainlib|zhongzheng': 3, 'mainlib|youyi': 5, 'zhongzheng|youyi': 5,
-  'songyuan|dorm9': 6, 'songyuan|female14': 3, 'dorm9|female14': 7,
+  'backdoor|nightmarket': 4, 'backdoor|female14': 8, 'nightmarket|female14': 7,
 };
 export const walk = (a, b) => {
   if (a === b) return 0;

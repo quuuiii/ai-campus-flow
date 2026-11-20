@@ -89,7 +89,7 @@ export function renderDashboard(state) {
     ${bannerHtml}${kpi}
     <h2 class="th2">AI 智慧時間軸 · 週${DAYS[pl.day]}</h2>
     ${pl.tasks.length ? tl + unsched + deferred : '<section class="card">還沒有可解析的任務，請在左側輸入需求，或按上方「一鍵載入 Demo 情境」。</section>'}
-    <details class="prov card"><summary>ⓘ 數據來源與限制</summary><p>${esc(PROVENANCE)}</p><p>地點名稱取自中央大學校園地圖；「第九餐廳」位於男九舍旁。K書中心位於中正圖書館 2F。</p></details>
+    <details class="prov card"><summary>ⓘ 數據來源與限制</summary><p>${esc(PROVENANCE)}</p><p>地點名稱取自中央大學校園地圖。K書中心位於中正圖書館 2F。松苑餐廳、第九餐廳目前暫停營業，已從推薦中移除。</p></details>
   </section>`;
 
   return `<section class="hero compact">
