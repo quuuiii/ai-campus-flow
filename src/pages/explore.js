@@ -2,7 +2,7 @@
 import { esc, fmtTW, downloadText, isoTW } from '../util.js';
 import { ic } from '../icons.js';
 import { PLACES } from '../data/places.js';
-import { CAMPUS_LOCATIONS } from '../data/locations.js';
+import { CAMPUS_LOCATIONS, LOCATION_KINDS, SOURCES } from '../data/locations.js';
 import { FOOD, FOOD_CATEGORIES } from '../data/food.js';
 import { addObservation, deleteObservation, obsToCSV, importObservationsCSV } from '../store.js';
 import { sufficiency, obsPlaceId, MIN_SAMPLES } from '../engine/crowd.js';
@@ -20,7 +20,7 @@ export function renderExplore(ctx) {
 }
 
 function placesPane() {
-  const kinds = ['全部', ...new Set(CAMPUS_LOCATIONS.map((l) => l.kind))];
+  const kinds = ['全部', ...LOCATION_KINDS];
   return `<div class="stack">
   <section class="card"><div class="card-h"><h2>${ic('map')}校園地圖</h2><a class="btn sm outline" href="https://www.openstreetmap.org/#map=16/24.968/121.195" target="_blank" rel="noopener noreferrer">放大 ${ic('nav', 14)}</a></div>
     <div class="map" id="mapBox"><iframe id="mapFrame" title="國立中央大學校園地圖" loading="lazy" src="${osmEmbed}"></iframe>
@@ -28,12 +28,13 @@ function placesPane() {
   <section class="card"><div class="card-h"><h2>${ic('search')}校園地點</h2></div>
     <div class="two"><label class="f"><span class="sr">類型</span><select id="locCat" aria-label="類型">${kinds.map((k) => `<option ${q.cat === k ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
     <label class="f"><span class="sr">搜尋</span><input id="locQ" type="search" placeholder="搜尋地點" aria-label="搜尋地點" value="${esc(q.place)}"></label></div>
-    <div id="locList"></div></section></div>`;
+    <div id="locList"></div>
+    <p class="note faint" style="margin-top:10px">說明整理自中大官方導覽圖與圖書館等公開資料，不含營業時間；松苑、第九餐廳暫停營業，未列入。地圖按鈕以名稱搜尋，位置以地圖為準。</p></section></div>`;
 }
 function locList() {
   const k = q.place.trim().toLowerCase();
   const items = CAMPUS_LOCATIONS.filter((l) => (q.cat === '全部' || l.kind === q.cat) && (!k || (l.name + l.description).toLowerCase().includes(k)));
-  return items.length ? items.map((l) => `<div class="li"><div class="li-main"><b>${esc(l.name)}</b><small>${esc(l.kind)} · ${esc(l.description)}</small></div><a class="icon-btn" href="${mapSearch(l.query)}" target="_blank" rel="noopener noreferrer" aria-label="在地圖開啟 ${esc(l.name)}">${ic('nav', 18)}</a></div>`).join('') : '<div class="empty">找不到符合的地點。</div>';
+  return items.length ? items.map((l) => `<div class="li"><div class="li-main"><b>${esc(l.name)}</b><small>${esc(l.kind)} · ${esc(l.description)}</small><small>來源：${esc(SOURCES[l.source] || '')}</small></div><a class="icon-btn" href="${mapSearch(l.query)}" target="_blank" rel="noopener noreferrer" aria-label="在地圖開啟 ${esc(l.name)}">${ic('nav', 18)}</a></div>`).join('') : '<div class="empty">找不到符合的地點。</div>';
 }
 
 function foodPane(area) {
