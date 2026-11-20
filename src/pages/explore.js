@@ -5,12 +5,15 @@ import { PLACES } from '../data/places.js';
 import { CAMPUS_LOCATIONS, LOCATION_KINDS, SOURCES } from '../data/locations.js';
 import { FOOD, FOOD_CATEGORIES } from '../data/food.js';
 import { addObservation, deleteObservation, obsToCSV, importObservationsCSV } from '../store.js';
-import { sufficiency, obsPlaceId, MIN_SAMPLES } from '../engine/crowd.js';
+import { sufficiency, obsPlaceId, MIN_SAMPLES, modelReport } from '../engine/crowd.js';
+import { MIN_SAMPLES as MODEL_MIN, MIN_DATES } from '../engine/model.js';
 
 const TABS = [['places', 'map', '校園地點'], ['back', 'meal', '後門美食'], ['night', 'coffee', '宵夜街美食'], ['crowd', 'eye', '人潮觀察']];
-const q = { place: '', cat: '全部', food: '', fcat: '全部' };
+const q = { place: '', cat: '全部', food: '', fcat: '全部', sel: '' };
 const mapSearch = (s) => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s);
-const osmEmbed = 'https://www.openstreetmap.org/export/embed.html?bbox=121.180%2C24.958%2C121.212%2C24.978&layer=mapnik';
+// 不內建任何建築物座標：地圖以「地點名稱」搜尋定位，位置由地圖服務解析（未經逐點人工驗證）
+const embedUrl = (query) => 'https://maps.google.com/maps?hl=zh-TW&output=embed&q=' + encodeURIComponent(query);
+const CAMPUS_Q = '國立中央大學';
 
 export function renderExplore(ctx) {
   const tab = ctx.state.ui.exploreTab;
@@ -22,9 +25,10 @@ export function renderExplore(ctx) {
 function placesPane() {
   const kinds = ['全部', ...LOCATION_KINDS];
   return `<div class="stack">
-  <section class="card"><div class="card-h"><h2>${ic('map')}校園地圖</h2><a class="btn sm outline" href="https://www.openstreetmap.org/#map=16/24.968/121.195" target="_blank" rel="noopener noreferrer">放大 ${ic('nav', 14)}</a></div>
-    <div class="map" id="mapBox"><iframe id="mapFrame" title="國立中央大學校園地圖" loading="lazy" src="${osmEmbed}"></iframe>
-      <div class="fallback">${ic('map', 28)}<b>地圖暫時無法載入</b><span>可能是網路不穩或被瀏覽器擋下。你仍可用下方連結開啟地圖。</span><a class="btn sm" href="https://www.openstreetmap.org/#map=16/24.968/121.195" target="_blank" rel="noopener noreferrer">用新分頁開啟</a></div></div></section>
+  <section class="card"><div class="card-h"><h2>${ic('map')}校園地圖</h2><a class="btn sm outline" id="mapOpen" href="${mapSearch(CAMPUS_Q)}" target="_blank" rel="noopener noreferrer">用地圖 App 開啟 ${ic('nav', 14)}</a></div>
+    <p class="note" id="mapSel" style="margin-bottom:8px">點下方任一地點，地圖會定位到該地點。</p>
+    <div class="map" id="mapBox"><iframe id="mapFrame" title="國立中央大學校園地圖" loading="lazy" src="${embedUrl(CAMPUS_Q)}"></iframe>
+      <div class="fallback">${ic('map', 28)}<b>地圖暫時無法載入</b><span>可能是網路不穩或被瀏覽器擋下。你仍可用下方連結開啟地圖。</span><a class="btn sm" href="${mapSearch(CAMPUS_Q)}" target="_blank" rel="noopener noreferrer">用新分頁開啟</a></div></div></section>
   <section class="card"><div class="card-h"><h2>${ic('search')}校園地點</h2></div>
     <div class="two"><label class="f"><span class="sr">類型</span><select id="locCat" aria-label="類型">${kinds.map((k) => `<option ${q.cat === k ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
     <label class="f"><span class="sr">搜尋</span><input id="locQ" type="search" placeholder="搜尋地點" aria-label="搜尋地點" value="${esc(q.place)}"></label></div>
@@ -34,7 +38,7 @@ function placesPane() {
 function locList() {
   const k = q.place.trim().toLowerCase();
   const items = CAMPUS_LOCATIONS.filter((l) => (q.cat === '全部' || l.kind === q.cat) && (!k || (l.name + l.description).toLowerCase().includes(k)));
-  return items.length ? items.map((l) => `<div class="li"><div class="li-main"><b>${esc(l.name)}</b><small>${esc(l.kind)} · ${esc(l.description)}</small><small>來源：${esc(SOURCES[l.source] || '')}</small></div><a class="icon-btn" href="${mapSearch(l.query)}" target="_blank" rel="noopener noreferrer" aria-label="在地圖開啟 ${esc(l.name)}">${ic('nav', 18)}</a></div>`).join('') : '<div class="empty">找不到符合的地點。</div>';
+  return items.length ? items.map((l) => `<div class="li"><div class="li-main"><b>${esc(l.name)}</b><small>${esc(l.kind)} · ${esc(l.description)}</small><small>來源：${esc(SOURCES[l.source] || '')}</small></div><button class="icon-btn" data-showmap="${esc(l.name)}" aria-label="在地圖上顯示 ${esc(l.name)}" aria-pressed="${q.sel === l.name}" style="${q.sel === l.name ? 'background:var(--mint-bg);color:var(--mint-d);border-color:var(--mint)' : ''}">${ic('pin', 18)}</button><a class="icon-btn" href="${mapSearch(l.query)}" target="_blank" rel="noopener noreferrer" aria-label="用地圖 App 開啟 ${esc(l.name)}">${ic('nav', 18)}</a></div>`).join('') : '<div class="empty">找不到符合的地點。</div>';
 }
 
 function foodPane(area) {
@@ -60,6 +64,13 @@ function crowdPane(ctx) {
     return `<div class="li"><div class="li-main"><b>${esc(p.short)}</b><small>${mine.length} 筆 · 平均擁擠度 ${avg}/5 · 資料量${sufficiency(mine.length)}</small></div></div>`;
   }).filter(Boolean).join('');
   const sorted = [...list].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const rep = modelReport(list);
+  const ST = { insufficient: ['資料不足', 'tag'], 'not-better': ['未優於模擬', 'tag warn'], ready: ['模型可用', 'tag ok'] };
+  const modelCard = `<section class="card"><div class="card-h"><h2>${ic('target')}預測模型狀態</h2><i class="tag ${rep.mode === 'demo' ? 'warn' : 'ok'}">${rep.mode === 'demo' ? '示範模式' : rep.mode === 'partial' ? '部分地點可用' : '全部可用'}</i></div>
+    <div class="banner ${rep.mode === 'demo' ? 'warn' : 'info'}" style="margin-bottom:10px">${ic(rep.mode === 'demo' ? 'flask' : 'info', 18)}<div>${rep.mode === 'demo' ? '<b>示範模式：</b>目前沒有任何地點通過模型驗證，規劃頁的人潮數字是人工模擬值（或少量觀察的混合），<b>不是預測</b>。' : '通過驗證的地點才會標示「模型」；其餘仍為模擬／觀察混合。'}</div></div>
+    <p class="note" style="margin-bottom:8px">模型：核平滑回歸（時間核寬 45 分鐘），向模擬值收縮。啟用條件：每地點 ≥ ${MODEL_MIN} 筆、≥ ${MIN_DATES} 個不同日期，且「留一日驗證」平均誤差（MAE，單位為百分點）≤ 模擬基準的 90% 並優於全體平均基準。觀察的 1–5 級以 10/30/50/70/90% 換算，為假設。</p>
+    ${rep.rows.map((r) => `<div class="li"><div class="li-main"><b>${esc(r.place.short)}</b><small>${r.n} 筆 · ${r.dates} 天${r.maeModel != null ? ` · MAE 模型 ${r.maeModel.toFixed(1)}／模擬 ${r.maeSim.toFixed(1)}／平均 ${r.maeMean.toFixed(1)}` : ''}</small><small>${esc(r.reason)}</small></div><i class="${ST[r.status][1]}">${ST[r.status][0]}</i></div>`).join('')}
+    <p class="note faint" style="margin-top:8px">尚未在真實資料上訓練或驗證；上表會隨你們累積的觀察紀錄自動更新。</p></section>`;
   return `<div class="stack">
   <div class="banner info">${ic('info', 18)}<div><b>資料來源說明：</b>每個地點累積 ≥ ${MIN_SAMPLES} 筆觀察後，才會與模擬值混合納入預測；不足時一律標示「模擬」，不會假裝成即時預測。</div></div>
   <div class="grid2" style="align-items:start">
@@ -75,6 +86,7 @@ function crowdPane(ctx) {
   <section class="card"><div class="card-h"><h2>${ic('db')}已記錄 ${list.length} 筆</h2></div>
     <div class="row" style="margin-bottom:10px"><button class="btn sm" id="expObs" ${list.length ? '' : 'disabled'}>${ic('download', 16)}匯出 CSV</button><label class="btn sm" style="cursor:pointer">${ic('upload', 16)}匯入 CSV<input id="impObs" type="file" accept=".csv,text/csv" hidden></label></div>
     ${per || '<p class="note">還沒有觀察資料。</p>'}</section></div>
+  ${modelCard}
   <section class="card"><div class="card-h"><h2>${ic('list')}觀察紀錄</h2></div>
     ${sorted.length ? sorted.slice(0, 50).map((o) => `<div class="li"><div class="li-main"><b>${esc(o.place)} · ${o.crowd}/5${o.queue != null ? ' · 排隊 ' + o.queue + ' 分' : ''}</b><small>${esc(fmtTW(o.timestamp))} · ${o.method === 'manual' ? '事後紀錄' : '現場觀察'}${o.note ? ' · ' + esc(o.note) : ''}</small></div><button class="icon-btn sm danger" data-delobs="${esc(o.id)}" aria-label="刪除這筆紀錄">${ic('trash', 16)}</button></div>`).join('') + (sorted.length > 50 ? `<p class="note">僅顯示最新 50 筆，匯出可取得全部。</p>` : '') : '<div class="empty">尚無紀錄。</div>'}</section></div>`;
 }
@@ -83,14 +95,21 @@ export function bindExplore(ctx) {
   const $ = (s) => document.querySelector(s), tab = ctx.state.ui.exploreTab;
   document.querySelectorAll('[data-etab]').forEach((b) => (b.onclick = () => { ctx.state.ui.exploreTab = b.dataset.etab; ctx.save(); ctx.rerender(); }));
   if (tab === 'places') {
-    const draw = () => ($('#locList').innerHTML = locList());
+    const box = $('#mapBox'), fr = $('#mapFrame'); let ok = false, timer;
+    const watch = () => { ok = false; box.classList.remove('failed'); clearTimeout(timer); timer = setTimeout(() => { if (!ok || navigator.onLine === false) box.classList.add('failed'); }, 8000); };
+    const show = (name) => {
+      const l = CAMPUS_LOCATIONS.find((x) => x.name === name); if (!l) return;
+      q.sel = name; fr.src = embedUrl(l.query); watch();
+      $('#mapSel').textContent = `地圖定位：${l.name}（以名稱搜尋，位置由地圖服務解析）`; $('#mapOpen').href = mapSearch(l.query);
+      draw(); box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+    const draw = () => { $('#locList').innerHTML = locList(); document.querySelectorAll('[data-showmap]').forEach((b) => (b.onclick = () => show(b.dataset.showmap))); };
     $('#locCat').onchange = (e) => { q.cat = e.target.value; draw(); };
     $('#locQ').oninput = (e) => { q.place = e.target.value; draw(); };
     draw();
-    const box = $('#mapBox'), fr = $('#mapFrame'); let ok = false;
     fr.addEventListener('load', () => { ok = true; });
     fr.addEventListener('error', () => box.classList.add('failed'));
-    setTimeout(() => { if (!ok || navigator.onLine === false) box.classList.add('failed'); }, 8000);
+    watch();
   } else if (tab === 'back' || tab === 'night') {
     const area = tab === 'back' ? '後門' : '宵夜街', draw = () => ($('#foodList').innerHTML = foodList(area));
     $('#foodQ').oninput = (e) => { q.food = e.target.value; draw(); };

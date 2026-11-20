@@ -38,3 +38,7 @@ npm run dev
 - 指令：`npm test`（node:test）、`npm run build`。
 - 資料誠實：人潮為「觀察／模擬」，目前沒有已訓練的預測模型，詳見 `docs/ai-architecture.md`。
 - 資料庫評估：`docs/supabase-plan.md`、`supabase/schema.sql`（草案，未部署）。
+
+## 測試
+- `npm test`：單元／不變條件／一致性（Planner 216 種情境）／模型／餐廳清單守門測試。
+- 手機端對端：`npm run build && npx vite preview --port 4173`，另開終端機 `python3 -I e2e/mobile.py`（需 Playwright + Chromium）。
