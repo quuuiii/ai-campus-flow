@@ -58,3 +58,13 @@ test('predictCrowd：模型 ready 才回傳 source=model，且附評估數字；
   assert.notEqual(predictCrowd(place, 780, [], 2).source, 'model');
 });
 test('MIN_SAMPLES 常數', () => assert.equal(MIN_SAMPLES, 20));
+
+test('驗證以台灣日期分組：台灣早上 7 點與下午的觀察屬於同一天（避免資料洩漏）', async () => {
+  const { samplesFor } = await import('../src/engine/crowd.js');
+  const obs = [
+    { id: 'a', timestamp: '2026-11-10T23:00:00.000Z', placeId: 'backdoor', place: '後門餐飲區', crowd: 3 }, // 台灣 11/11 07:00
+    { id: 'b', timestamp: '2026-11-11T05:00:00.000Z', placeId: 'backdoor', place: '後門餐飲區', crowd: 3 }, // 台灣 11/11 13:00
+  ];
+  const s = samplesFor('backdoor', obs);
+  assert.equal(s[0].date, '2026-11-11'); assert.equal(s[1].date, '2026-11-11');
+});

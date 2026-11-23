@@ -66,6 +66,18 @@ async def run_flows(pg, ctx, errs):
     ok('壓力測試顯示警示', await pg.locator('.status.warn, .status.bad').count() == 1)
     await pg.click('#realloc'); await pg.wait_for_timeout(200); ok('一鍵重新調配可執行', await pg.locator('.status').count() == 1)
     txt = await pg.inner_text('main'); ok('不含未標示的精確「N%」小數', not re.search(r'\d+\.\d+%', txt))
+    # ── 解析確認與手動修改 ──
+    await pg.fill('#nlText', '我想和組員討論專題一個半小時，我想打球'); await pg.click('#replan'); await pg.wait_for_timeout(200)
+    ok('看不懂的片段有提示', '我想打球' in (await pg.inner_text('#panel')))
+    ok('一個半小時解析為 90 分', (await pg.locator('[data-f=dur]').first.input_value()) == '90')
+    await pg.locator('[data-f=dur]').first.fill('45'); await pg.locator('[data-f=dur]').first.dispatch_event('change'); await pg.wait_for_timeout(150)
+    await pg.click('#addTask'); await pg.wait_for_timeout(150)
+    ok('手動新增任務', await pg.locator('[data-deltask]').count() == 2)
+    await pg.reload(); await pg.wait_for_selector('.tabbar'); await pg.wait_for_timeout(150)
+    ok('重新整理後手動修改仍保留', await pg.locator('[data-deltask]').count() == 2 and (await pg.locator('[data-f=dur]').first.input_value()) == '45')
+    await pg.locator('[data-deltask]').last.click(); await pg.wait_for_timeout(150)
+    ok('刪除任務', await pg.locator('[data-deltask]').count() == 1)
+    await pg.fill('#nlText', '我想吃午餐、去圖書館讀書一小時，還要在五點前完成一份作業。'); await pg.click('#replan'); await pg.wait_for_timeout(200)
     # ── 人潮回報 + CSV ──
     await pg.click('[data-tab=explore]'); await pg.click('#tab-crowd'); await pg.wait_for_timeout(120)
     for i in range(3):

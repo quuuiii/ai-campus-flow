@@ -27,14 +27,14 @@ test(`一致性：${scenarios.length} 種情境（時間/步行/排隊/緩衝/�
       const tag = `${text}|${JSON.stringify(over)}|${it.task.id}`;
       // 步行分鐘與資料表一致
       assert.equal(it.walkIn, walk(it.from, it.place.id), `walkIn 與步行表不符 ${tag}`);
-      if (it.slot.next) assert.equal(it.walkOut, walk(it.place.id, it.slot.next), `walkOut 不符 ${tag}`);
+      if (it.slot.hasNext) assert.equal(it.walkOut, walk(it.place.id, it.slot.next), `walkOut 不符 ${tag}`);
       // 開始時間 ≥ 抵達時間 + 排隊
       assert.ok(it.start >= it.arrive + it.queue, `開始早於抵達+排隊 ${tag}`);
       assert.equal(it.queue, queueMin(it.pct), `排隊與人潮不符 ${tag}`);
       assert.ok(it.queue === 0 || it.queue % 5 === 0, '排隊分鐘應為 5 的倍數');
       // 緩衝
       if (it.slack != null) assert.equal(it.slack, it.slot.e - (it.end + it.walkOut) - ctx.buffer, `緩衝計算不符 ${tag}`);
-      walkSum += it.walkIn + it.walkOut;
+      walkSum += it.walkIn + (it.isLast && it.slot.hasNext ? it.walkOut : 0);
       // 理由中的數字必須等於卡片資料
       const text1 = explain(it).join('\n');
       if (it.task.kind === 'meal' || it.task.kind === 'errand') assert.ok(text1.includes(`人潮約 ${approx(it.pct)}%`), `理由人潮不符 ${tag}`);

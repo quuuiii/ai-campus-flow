@@ -36,7 +36,7 @@ npm run dev
 ## v2 重構摘要
 - 結構：`src/pages/*`（頁面）、`src/engine/*`（排程、人潮）、`src/store.js`（localStorage 驗證/遷移）、`src/data/*`。
 - 指令：`npm test`（node:test）、`npm run build`。
-- 資料誠實：人潮為「觀察／模擬」，目前沒有已訓練的預測模型，詳見 `docs/ai-architecture.md`。
+- 資料誠實：人潮分「模擬／觀察／模型」三種來源；統計模型已實作，但尚無真實資料通過驗證（示範模式），詳見 `docs/ai-architecture.md`。
 - 資料庫評估：`docs/supabase-plan.md`、`supabase/schema.sql`（草案，未部署）。
 
 ## 測試

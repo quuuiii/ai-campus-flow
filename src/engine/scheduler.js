@@ -4,39 +4,79 @@ import { PLACES, KINDS, BUILDINGS, walk, placeName } from '../data/places.js';
 import { queueMin, approx, SOURCE_LABEL, defaultCrowdFn } from './crowd.js';
 import { toMin, fmt } from '../util.js';
 
-// ── 自然語言需求解析（規則式）──
-const CN = { 零: 0, 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
-const num = (s) => (/^\d+(\.\d+)?$/.test(s) ? +s : s.length === 1 ? CN[s] ?? null : s === '十一' ? 11 : s === '十二' ? 12 : null);
-const NUM = '(\\d+(?:\\.\\d+)?|[一二兩三四五六七八九十]+)';
+// ── 自然語言需求解析（規則式，非大型語言模型）──
+const CN = { 零: 0, 〇: 0, 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+// 中文數字 0–99（十、十五、二十、二十五、兩…）或阿拉伯數字（含小數）
+export function cnNum(str) {
+  const s = String(str).trim();
+  if (/^\d+(\.\d+)?$/.test(s)) return +s;
+  if (!/^[零〇一二兩三四五六七八九十]+$/.test(s)) return null;
+  if (!s.includes('十')) return s.length === 1 ? CN[s] : null;
+  const [h, l] = s.split('十');
+  if (s.split('十').length > 2) return null;
+  const tens = h === '' ? 1 : CN[h], ones = l === '' ? 0 : CN[l];
+  return tens == null || ones == null || h.length > 1 || l.length > 1 ? null : tens * 10 + ones;
+}
+const NUM = '(\\d+(?:\\.\\d+)?|[零〇一二兩三四五六七八九十]+)';
+const FILLER = /^(我|今天|今日|然後|另外|幫我|請|想|要|好|謝謝|嗎|吧|的|了|一下)+$/;
+const KIND_RULES = [
+  ['meal', /午餐|午飯|吃飯|用餐|晚餐|晚飯|吃東西|吃點|吃/],
+  ['group', /討論|小組|開會|組員|組會|meeting/i],
+  ['homework', /作業|報告|專題|論文|週報|寫完|完成|交/],
+  ['study', /圖書館|讀書|自習|K書|念書|唸書|複習|預習|看書/i],
+  ['errand', /行政|辦事|影印|印|繳|註冊|申請|領|郵局|教務處|學務處/],
+];
 
-export function parseTasks(text) {
-  const segs = String(text || '').split(/[，,。；;、\n！!？?]|還要|還有|然後|以及/).map((s) => s.trim()).filter(Boolean);
-  const tasks = [];
+function parseDuration(seg) {
+  let m;
+  if ((m = seg.match(new RegExp(NUM + '\\s*個?\\s*半\\s*(?:小時|鐘頭)')))) { const n = cnNum(m[1]); if (n != null) return Math.round(n * 60) + 30; }
+  if ((m = seg.match(new RegExp(NUM + '\\s*個?\\s*(?:小時|鐘頭)(半)?')))) { const n = cnNum(m[1]); if (n != null) return Math.round(n * 60) + (m[2] ? 30 : 0); }
+  if (/半(?:個)?(?:小時|鐘頭)/.test(seg)) return 30;
+  if ((m = seg.match(new RegExp(NUM + '\\s*分(?:鐘)?')))) { const n = cnNum(m[1]); if (n != null) return Math.round(n); }
+  return null;
+}
+
+// 回傳 {minute, assumed}；assumed 表示上下午是推測的
+function parseDeadline(seg) {
+  let m = seg.match(/(\d{1,2})\s*[:：]\s*(\d{2})\s*(?:之|以)?前/);
+  let h, mm = 0, period = '';
+  if (m) { h = +m[1]; mm = +m[2]; }
+  else {
+    m = seg.match(new RegExp('(上午|早上|中午|下午|傍晚|晚上)?\\s*' + NUM + '\\s*[點時]\\s*(半|' + NUM + '\\s*分?)?\\s*(?:之|以)?前'));
+    if (!m) return null;
+    period = m[1] || ''; h = cnNum(m[2]);
+    if (h == null) return null;
+    if (m[3] === '半') mm = 30; else if (m[4]) mm = cnNum(m[4]) ?? 0;
+    // 「中午」與 12 點前後
+    if (!period) { const pm = seg.match(/(上午|早上|中午|下午|傍晚|晚上)/); period = pm ? pm[1] : ''; }
+  }
+  if (h > 24 || mm > 59) return null;
+  let assumed = false;
+  if (/下午|傍晚|晚上/.test(period) && h < 12) h += 12;
+  else if (period === '中午' && h <= 2) h += 12;
+  else if (!period && h >= 1 && h <= 7) { h += 12; assumed = true; }
+  return { minute: Math.min(h * 60 + mm, 1439), assumed };
+}
+
+// 解析整段需求：回傳任務與「看不懂的片段」，看不懂的不會被默默丟掉
+export function parseRequest(text) {
+  const segs = String(text || '').split(/[，,。；;、\n！!？?]|還要|還有|然後|以及|另外/).map((x) => x.trim()).filter(Boolean);
+  const tasks = [], unknown = [], notes = [];
   for (const seg of segs) {
-    let kind = null;
-    if (/午餐|午飯|吃飯|用餐|晚餐|晚飯|吃/.test(seg)) kind = 'meal';
-    else if (/作業|報告|專題|論文|週報/.test(seg)) kind = 'homework';
-    else if (/討論|小組|開會/.test(seg)) kind = 'group';
-    else if (/圖書館|讀書|自習|K書|念書|複習|預習/.test(seg)) kind = 'study';
-    else if (/行政|辦事|影印|繳|註冊/.test(seg)) kind = 'errand';
-    if (!kind) continue;
-    let dur = KINDS[kind].dur;
-    let m;
-    if (/半小時/.test(seg)) dur = 30;
-    else if ((m = seg.match(new RegExp(NUM + '\\s*個?\\s*小時(半)?'))) && num(m[1]) != null) dur = Math.round(num(m[1]) * 60) + (m[2] ? 30 : 0);
-    else if ((m = seg.match(new RegExp(NUM + '\\s*分鐘?'))) && num(m[1]) != null) dur = Math.round(num(m[1]));
-    dur = Math.max(10, Math.min(240, dur));
-    const task = { id: kind + tasks.length, kind, dur, text: seg };
-    if ((m = seg.match(new RegExp(NUM + '\\s*[點時:]\\s*(半)?\\s*前'))) && num(m[1]) != null) {
-      let h = num(m[1]);
-      if (h <= 7) h += 12;
-      task.deadline = h * 60 + (m[2] ? 30 : 0);
-    }
+    const rule = KIND_RULES.find(([, re]) => re.test(seg));
+    if (!rule) { if (!FILLER.test(seg) && seg.length >= 2) unknown.push(seg); continue; }
+    const kind = rule[0];
+    const d = parseDuration(seg);
+    const dur = Math.max(10, Math.min(240, d ?? KINDS[kind].dur));
+    const task = { id: kind + tasks.length, kind, dur, text: seg, durGuessed: d == null };
+    const dl = parseDeadline(seg);
+    if (dl) { task.deadline = dl.minute; if (dl.assumed) notes.push(`「${seg}」的時間推測為 ${fmt(dl.minute)}，如不正確請手動修改`); }
     if (kind === 'meal' && /晚餐|晚飯/.test(seg)) task.window = [1020, 1200];
     tasks.push(task);
   }
-  return tasks;
+  return { tasks, unknown, notes };
 }
+export const parseTasks = (text) => parseRequest(text).tasks;
 
 // ── 空堂計算（含前後課堂所在建築）──
 // origin：沒有前一堂課時的出發地點
@@ -51,11 +91,11 @@ export function computeSlots(courses, day, win, origin = null) {
   for (const c of cs) {
     if (c.e <= win.start) { prev = c.building || origin; continue; }
     if (c.s >= win.end) break;
-    if (c.s > cur) slots.push({ s: cur, e: Math.min(c.s, win.end), prev, next: c.building || null, nextName: c.name, nextStart: c.s });
+    if (c.s > cur) slots.push({ s: cur, e: Math.min(c.s, win.end), prev, next: c.building || null, nextName: c.name, nextStart: c.s < win.end ? c.s : null, hasNext: c.s < win.end });
     cur = Math.max(cur, c.e);
     prev = c.building || origin;
   }
-  if (cur < win.end) slots.push({ s: cur, e: win.end, prev, next: null });
+  if (cur < win.end) slots.push({ s: cur, e: win.end, prev, next: null, hasNext: false });
   return slots.filter((s) => s.e - s.s >= 15);
 }
 
@@ -90,8 +130,9 @@ function evaluate(t, sl, want, ctx, slotItems) {
     const queue = t.kind === 'meal' || t.kind === 'errand' ? queueMin(pct) : 0;
     start += queue;
     const baseDur = t.kind === 'meal' ? p.eat ?? want : want;
-    const walkOut = sl.next ? walk(p.id, sl.next) : 0;
-    const limit = Math.min(sl.e - walkOut - (sl.next ? buf : 0), t.deadline ?? 1e9);
+    // 下一堂課未填教室時，步行以預設值估算，緩衝照樣保留
+    const walkOut = sl.hasNext ? walk(p.id, sl.next) : 0;
+    const limit = Math.min(sl.e - walkOut - (sl.hasNext ? buf : 0), t.deadline ?? 1e9);
     const avail = limit - start;
     const flex = KINDS[t.kind].flex;
     const minDur = flex ? Math.max(20, Math.round((baseDur * 0.8) / 5) * 5) : baseDur;
@@ -161,13 +202,24 @@ export function buildPlan(c) {
     const sl = slots[hit.k];
     let { pick } = hit;
     if (pick.need > 0) {
+      // 先試算：縮短前面的彈性任務後，必須真的放得下（不需再縮短）才套用，否則還原並改找下一個空堂
+      const snap = { cur: sl.cur, items: sl.items.map((it) => ({ it, v: [it.dur, it.end, it.start, it.depart, it.arrive, it.shrunk] })) };
       shrink(sl, sl.items, pick.need);
-      const again = evaluate(t, sl, want, ctx, sl.items).find((x) => x.place.id === pick.place.id);
+      const fit = evaluate(t, sl, want, ctx, sl.items).filter((x) => x.need === 0);
+      const again = fit.find((x) => x.place.id === pick.place.id) || fit[0];
       if (again) pick = again;
+      else {
+        sl.cur = snap.cur;
+        for (const { it, v } of snap.items) [it.dur, it.end, it.start, it.depart, it.arrive, it.shrunk] = v;
+        const rest = slots.slice(hit.k + 1).map((x, j) => ({ k: hit.k + 1 + j, c: evaluate(t, x, want, ctx, x.items).filter((y) => y.need === 0) })).find((x) => x.c.length);
+        if (!rest) { unscheduled.push({ task: t, reason: whyNot(t, baseSlots, ctx) }); continue; }
+        hit.k = rest.k; hit.cands = rest.c; pick = rest.c.find((x) => x.place.id === ctx.overrides[t.id]) || rest.c[0];
+      }
     }
+    const sl2 = slots[hit.k];
     const worst = [...hit.cands].sort((a, b) => b.pct - a.pct)[0];
     const item = {
-      task: t, place: pick.place, slot: sl, slotIndex: hit.k, from: sl.loc, depart: sl.cur + pick.moveBuf,
+      task: t, place: pick.place, slot: sl2, slotIndex: hit.k, from: sl2.loc, depart: sl2.cur + pick.moveBuf,
       walkIn: pick.walkIn, walkOut: pick.walkOut, arrive: pick.arrive, queue: pick.queue,
       start: pick.start, end: pick.start + pick.dur, dur: pick.dur, minDur: pick.minDur, want,
       pct: pick.pct, src: pick.src, shrunk: t.kind === 'meal' ? 0 : Math.max(0, want - pick.dur), worst,
@@ -175,14 +227,17 @@ export function buildPlan(c) {
       deadlineSlack: t.deadline != null ? t.deadline - (pick.start + pick.dur) : null,
       slack: null,
     };
-    sl.cur = item.end; sl.loc = pick.place.id; sl.items.push(item); items.push(item);
+    sl2.cur = item.end; sl2.loc = pick.place.id; sl2.items.push(item); items.push(item);
     si = hit.k; // 後面的任務不能排到更早的空堂
   }
   // 每個空堂最後一項：計算回到下一堂課的緩衝
   for (const sl of slots) {
+    sl.items.forEach((it, j) => { it.isLast = j === sl.items.length - 1; });
     const last = sl.items[sl.items.length - 1];
-    if (last && sl.next) last.slack = sl.e - (last.end + last.walkOut) - ctx.buffer;
+    if (last && sl.hasNext) last.slack = sl.e - (last.end + last.walkOut) - ctx.buffer;
   }
+  // 縮短會讓前面任務提早結束：最後統一重算截止餘裕，避免顯示過期數字
+  for (const it of items) if (it.task.deadline != null) it.deadlineSlack = it.task.deadline - it.end;
   // ── 警示 ──
   const freeMin = slots.reduce((a, s) => a + (s.e - s.s), 0);
   const needMin = ordered.reduce((a, t) => a + Math.round(t.dur * (ctx.scale[t.id] ?? 1)), 0);
@@ -195,9 +250,12 @@ export function buildPlan(c) {
     if (it.shrunk > 10) warnings.push({ level: 'warn', text: `「${name}」被壓縮 ${it.shrunk} 分鐘才排得進去` });
   }
   const level = warnings.some((w) => w.level === 'bad') ? 'bad' : warnings.length ? 'warn' : 'ok';
-  const totalWalk = items.reduce((a, i) => a + i.walkIn + i.walkOut, 0);
+  // 步行分兩部分：任務之間的移動（每項 walkIn）＋每個空堂最後一項回到下一堂課（walkOut），不重複計算
+  const moveWalk = items.reduce((a, i) => a + i.walkIn, 0);
+  const toClassWalk = items.reduce((a, i) => a + (i.isLast && i.slot.hasNext ? i.walkOut : 0), 0);
+  const totalWalk = moveWalk + toClassWalk;
   const savedQueue = items.reduce((a, i) => a + Math.max(0, (i.worst?.queue || 0) - i.queue), 0);
-  return { slots, items, unscheduled, warnings, level, totalWalk, savedQueue, freeMin, needMin };
+  return { slots, items, unscheduled, warnings, level, totalWalk, moveWalk, toClassWalk, savedQueue, freeMin, needMin };
 }
 
 // ── AI 一鍵重新調配：枚舉任務順序，必要時壓縮彈性任務或延後 ──
@@ -213,15 +271,20 @@ const cost = (p, idx) =>
 
 export function reallocate(c) {
   const ids = c.order.slice();
-  const orders = ids.length <= 6 ? perms(ids) : [ids];
   const flexScale = (s) => Object.fromEntries(c.tasks.filter((t) => KINDS[t.kind].flex).map((t) => [t.id, s]));
+  const dl = (id) => c.tasks.find((t) => t.id === id)?.deadline ?? 1e9;
+  // ≤ 6 項：窮舉所有順序（最多 720 種）；> 6 項：以「截止時間優先」為起點，做兩兩交換的局部搜尋（上限 60 輪），避免階乘爆炸
   const attempt = (scale, deferred = []) => {
-    let best = null;
-    orders.forEach((order, idx) => {
-      const p = buildPlan({ ...c, order, overrides: {}, scale, deferred });
-      const k = cost(p, idx);
-      if (!best || k < best.k) best = { k, order, plan: p };
-    });
+    const run = (order, idx) => { const p = buildPlan({ ...c, order, overrides: {}, scale, deferred }); return { k: cost(p, idx), order, plan: p }; };
+    if (ids.length <= 6) return { ...perms(ids).map(run).reduce((a, b) => (b.k < a.k ? b : a)), scale, deferred };
+    let best = [ids, [...ids].sort((a, b) => dl(a) - dl(b))].map(run).reduce((a, b) => (b.k < a.k ? b : a));
+    for (let round = 0, improved = true; improved && round < 60; round++) {
+      improved = false;
+      for (let i = 0; i < ids.length && !improved; i++) for (let j = i + 1; j < ids.length && !improved; j++) {
+        const o = best.order.slice(); [o[i], o[j]] = [o[j], o[i]];
+        const r = run(o, 0); if (r.k < best.k - 1e-6) { best = r; improved = true; }
+      }
+    }
     return { ...best, scale, deferred };
   };
   let r = attempt({});
@@ -237,7 +300,7 @@ export function explain(it) {
   const srcTag = SOURCE_LABEL[it.src?.source] || '模擬';
   const walkTxt = `從${fromName}步行約 ${it.walkIn} 分（預估）`;
   if (t.kind === 'meal') {
-    out.push(`人潮約 ${approx(it.pct)}%（${srcTag}）｜${it.queue ? `估計排隊約 ${it.queue} 分` : '預期不需排隊'}｜${walkTxt}${it.slot.next ? `、前往${BUILDINGS[it.slot.next]}約 ${it.walkOut} 分` : ''}`);
+    out.push(`人潮約 ${approx(it.pct)}%（${srcTag}）｜${it.queue ? `估計排隊約 ${it.queue} 分` : '預期不需排隊'}｜${walkTxt}${it.isLast && it.slot.hasNext ? `、之後前往${BUILDINGS[it.slot.next] || '下一堂課教室（未填，預設估計）'}約 ${it.walkOut} 分` : ''}`);
     const w = it.worst;
     if (w && w.place?.id !== p.id && w.pct >= 70) out.push(`避開 ${w.place?.name || '擁擠地點'}：同時段人潮約 ${approx(w.pct)}%（${SOURCE_LABEL[w.src?.source] || '模擬'}）、估計排隊約 ${w.queue} 分，可能壓縮到${it.slot.nextName ? '「' + it.slot.nextName + '」' : '下一堂課'}的準備時間`);
     if (p.takeaway) out.push('外帶可縮短用餐時間，把空檔留給下一件事');
@@ -248,6 +311,7 @@ export function explain(it) {
   } else {
     out.push(`人潮約 ${approx(it.pct)}%（${srcTag}）｜${walkTxt}`);
   }
+  if (p.unverified) out.push(`待確認：${p.unverified}`);
   if (it.src?.note) out.push(`資料說明：${it.src.note}`);
   if (t.deadline != null) out.push(it.deadlineSlack === 0 ? `剛好在 ${fmt(t.deadline)} 前完成（無額外緩衝）` : `預計 ${fmt(it.end)} 完成，距 ${fmt(t.deadline)} 截止還有 ${it.deadlineSlack} 分`);
   if (it.shrunk > 0) out.push(`彈性縮短 ${it.shrunk} 分鐘（步行時間佔用空堂），仍保留 ${it.dur} 分鐘`);

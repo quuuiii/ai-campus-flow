@@ -5,7 +5,7 @@ import { BUILDINGS, KINDS, PROVENANCE, placeName, placeShort, originOptions } fr
 import { DEMO_TEXT } from '../data/demo.js';
 import { buildPlan, reallocate, explain } from '../engine/scheduler.js';
 import { defaultCrowdFn, approx, SOURCE_LABEL } from '../engine/crowd.js';
-import { taskState, demoState } from '../store.js';
+import { taskState, demoState, sanitizeTask } from '../store.js';
 
 const MODES = [['crowd', 'leaf', '避開人潮'], ['walk', 'walk', '最短步行'], ['focus', 'target', '專注效率']];
 const OVERLOAD = '再幫我加一場兩小時的小組討論';
@@ -37,6 +37,16 @@ export function renderPlan(ctx) {
     <div><p class="note" style="margin-bottom:6px">空堂（規劃時段內）</p><div class="slotchips">${plan.slots.map((s) => `<i class="chip">${fmt(s.s)}–${fmt(s.e)}</i>`).join('') || '<small>沒有空堂</small>'}</div></div>
     <label class="f"><span>今天想完成什麼？</span><textarea id="nlText" rows="3" maxlength="300" placeholder="例如：我想吃午餐、去圖書館讀書一小時，還要在五點前完成一份作業。">${esc(pl.text)}</textarea></label>
     <div class="seg" role="group" aria-label="排程偏好">${MODES.map(([id, icon, t]) => `<button data-mode="${id}" class="${pl.mode === id ? 'on' : ''}" aria-pressed="${pl.mode === id}">${ic(icon, 16)}${t}</button>`).join('')}</div>
+    ${(pl.unknown || []).length ? `<div class="banner warn">${ic('warn', 18)}<div><b>這些內容看不懂，沒有排入：</b>${pl.unknown.map((u) => '「' + esc(u) + '」').join('、')}。請改寫（例如「讀書 1 小時」「三點前交報告」），或在下方手動新增任務。</div></div>` : ''}
+    ${(pl.notes || []).length ? `<div class="banner info">${ic('info', 18)}<div>${pl.notes.map(esc).join('<br>')}</div></div>` : ''}
+    <details ${pl.tasks.some((t) => t.manual) || (pl.unknown || []).length ? 'open' : ''}><summary>${ic('edit', 16)} 檢查與修改解析結果（${pl.tasks.length} 項）</summary>
+      <div class="stack" style="margin-top:8px">${pl.tasks.map((t) => `<div class="card" style="padding:10px;box-shadow:none">
+        <div class="two"><label class="f" style="margin-bottom:6px"><span>類型</span><select data-tk="${t.id}" data-f="kind">${Object.entries(KINDS).map(([k, v]) => `<option value="${k}" ${t.kind === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
+        <label class="f" style="margin-bottom:6px"><span>分鐘${t.durGuessed ? '<small>（預設）</small>' : ''}</span><input type="number" inputmode="numeric" min="10" max="240" step="5" value="${t.dur}" data-tk="${t.id}" data-f="dur"></label></div>
+        <div class="row"><label class="f" style="flex:1;margin:0"><span>截止（選填）</span><input type="time" value="${t.deadline != null ? fmt(t.deadline) : ''}" data-tk="${t.id}" data-f="deadline"></label>
+        <button class="icon-btn danger" data-deltask="${t.id}" aria-label="刪除任務 ${esc(KINDS[t.kind].label)}" style="align-self:flex-end">${ic('trash', 16)}</button></div>
+        ${t.text ? `<small>原文：${esc(t.text)}</small>` : '<small>手動新增</small>'}</div>`).join('') || '<p class="note">目前沒有任務。</p>'}
+        <button class="btn sm outline" id="addTask">${ic('plus', 16)}手動新增任務</button></div></details>
     <div class="row"><button class="btn primary" id="replan">${ic('sparkles')} 產生行程</button><button class="btn outline" id="overload" title="壓力測試：塞入過多任務">${ic('plus')} 加一場兩小時討論</button></div>
     <details><summary>${ic('settings', 16)} 進階設定</summary>
       <div class="stack" style="margin-top:10px">
@@ -51,7 +61,7 @@ export function renderPlan(ctx) {
   const status = `<section class="status ${lvl}" aria-live="polite">
     <div class="status-top"><div><b>${ic(icon, 18)}${title}</b><p>${plan.level === 'ok' ? '所有任務都排進空堂，並預留移動緩衝。' : esc(plan.warnings.map((w) => w.text).join('；'))}${pl.deferred.length ? `；已將 ${pl.deferred.length} 項建議延後到晚上或明天` : ''}</p></div>
     <button class="btn sm ${plan.level !== 'ok' ? 'primary' : 'outline'}" id="realloc">${ic('refresh', 16)}${plan.level !== 'ok' ? '一鍵重新調配' : '重新最佳化'}</button></div>
-    <div class="kpi"><span>完成 <b>${doneN}/${plan.items.length}</b></span><span>步行 <b>${plan.totalWalk} 分</b></span><span>少排隊 <b>${plan.savedQueue} 分</b></span></div></section>`;
+    <div class="kpi"><span>完成 <b>${doneN}/${plan.items.length}</b></span><span>步行約 <b>${plan.totalWalk} 分</b><small>（移動 ${plan.moveWalk}＋回課堂 ${plan.toClassWalk}，預估）</small></span><span>估計少排隊 <b>${plan.savedQueue} 分</b></span></div></section>`;
 
   const blocks = dayCourses.filter((c) => toMin(c.end) > pl.win.start && toMin(c.start) < pl.win.end).map((c) => ({ s: toMin(c.start), html: classBlock(c) }));
   plan.slots.forEach((sl, i) => blocks.push({ s: sl.s, html: slotBlock(sl, i, plan, pl) }));
@@ -81,9 +91,10 @@ function taskCard(it, pl) {
   const main = ['避開', '彈性縮短', '剛好', '預計', '專注模式'].map((p) => reasons.find((r) => r.startsWith(p))).find(Boolean) || reasons[0];
   const rest = reasons.filter((r) => r !== main);
   const stay = it.from === it.place.id;
-  const route = `${stay ? '' : esc(it.from ? placeShort(it.from) : '目前位置') + ` <i>→ 步行約${it.walkIn}分 →</i> `}<b>${esc(it.place.short)}</b>${stay ? ' <i>（不用移動）</i>' : ''}${it.slot.next ? ` <i>→ 步行約${it.walkOut}分 →</i> ${esc(BUILDINGS[it.slot.next])}` : ''}`;
+  const route = `${stay ? '' : esc(it.from ? placeShort(it.from) : '目前位置') + ` <i>→ 步行約${it.walkIn}分 →</i> `}<b>${esc(it.place.short)}</b>${stay ? ' <i>（不用移動）</i>' : ''}${it.isLast && it.slot.hasNext ? ` <i>→ 步行約${it.walkOut}分 →</i> ${esc(BUILDINGS[it.slot.next] || '下一堂課')}` : ''}`;
   const alts = it.alts.filter((a) => !a.picked);
   const tags = [srcTag(it.src.source)];
+  if (it.place.unverified) tags.push('<i class="tag warn">地點待確認</i>');
   if (it.shrunk > 0) tags.push(`<i class="tag warn">彈性縮短 ${it.shrunk} 分</i>`);
   if (it.slack != null && it.slack < 8) tags.push(`<i class="tag warn">緩衝僅 ${Math.max(it.slack, 0)} 分</i>`);
   if (it.pct >= 80 && t.kind === 'meal') tags.push('<i class="tag bad">人潮擁擠</i>');
@@ -129,6 +140,26 @@ export function bindPlan(ctx) {
     if (j < 0 || j >= pl.order.length) return;
     [pl.order[i], pl.order[j]] = [pl.order[j], pl.order[i]]; pl.overrides = {}; commit();
   });
+  // 手動修改任務：改動後清除與該任務相關的調整，標記為手動
+  const editTask = (id, fn) => {
+    const i = pl.tasks.findIndex((t) => t.id === id); if (i < 0) return;
+    const t = sanitizeTask({ ...fn({ ...pl.tasks[i] }), manual: true });
+    if (!t) { ctx.toast('任務內容不正確（時間需 10–240 分鐘）', 'bad'); return ctx.rerender(); }
+    if (t.kind !== pl.tasks[i].kind) { delete t.window; if (t.kind === 'meal' && /晚餐|晚飯/.test(t.text)) t.window = [1020, 1200]; }
+    pl.tasks[i] = t; delete pl.overrides[id]; delete pl.scale[id]; pl.deferred = pl.deferred.filter((x) => x !== id); commit();
+  };
+  document.querySelectorAll('[data-tk]').forEach((el) => (el.onchange = () => editTask(el.dataset.tk, (t) => {
+    if (el.dataset.f === 'kind') t.kind = el.value;
+    if (el.dataset.f === 'dur') t.dur = Math.round(+el.value / 5) * 5 || +el.value;
+    if (el.dataset.f === 'deadline') { if (el.value) t.deadline = toMin(el.value); else delete t.deadline; }
+    return t;
+  })));
+  on('[data-deltask]', (b) => { const id = b.dataset.deltask; pl.tasks = pl.tasks.filter((t) => t.id !== id); pl.order = pl.order.filter((x) => x !== id); pl.deferred = pl.deferred.filter((x) => x !== id); delete pl.overrides[id]; delete pl.done[id]; commit(); });
+  $('#addTask').onclick = () => {
+    if (pl.tasks.length >= 20) return ctx.toast('最多 20 項任務', 'bad');
+    const id = 'm' + Date.now().toString(36);
+    pl.tasks.push({ id, kind: 'study', dur: 60, text: '', manual: true }); pl.order.push(id); commit();
+  };
   const r = $('#realloc');
   if (r) r.onclick = () => { Object.assign(pl, reallocate(planCtx(ctx))); commit(); };
 }

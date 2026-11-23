@@ -8,7 +8,7 @@ export function renderSettings(ctx) {
   return `<div class="page-head"><span class="eyebrow">Settings</span><h1>設定與資料</h1></div>
   <div class="stack">
   <section class="card"><div class="card-h"><h2>${ic('info')}關於 Campus Flow</h2></div>
-    <p>課表與觀察紀錄只存在這台裝置的瀏覽器（localStorage），沒有上傳到任何伺服器。排程是<b>規則式演算法</b>，不是大型語言模型；目前沒有已訓練的人潮預測模型。</p>
+    <p>課表與觀察紀錄只存在這台裝置的瀏覽器（localStorage），沒有上傳到任何伺服器。排程是<b>規則式演算法</b>，不是大型語言模型；人潮預測有一個統計模型，但只有在某地點的真實觀察資料通過驗證後才會啟用；在那之前都是模擬值（示範模式）。</p>
     <p style="margin-top:8px" class="note">${PROVENANCE}</p></section>
   <section class="card"><div class="card-h"><h2>${ic('flask')}示範資料</h2></div>
     <p class="note" style="margin-bottom:10px">載入示範課表與情境（不會動到你的人潮觀察紀錄）。這會取代目前課表，請先確認。</p>
