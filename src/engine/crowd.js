@@ -6,7 +6,7 @@ import { PLACES } from '../data/places.js';
 import { nowTW, isoTW } from '../util.js';
 import { evaluate, kernelPredict, MIN_SAMPLES as MODEL_MIN_SAMPLES } from './model.js';
 
-export const SOURCE_LABEL = { observed: '觀察', simulated: '模擬', model: '模型' };
+export const SOURCE_LABEL = { observed: '觀察', simulated: '模擬', model: '模型', none: '無資料' };
 export const MIN_SAMPLES = 3;      // 少於此筆數不使用觀察資料
 export const FULL_WEIGHT_AT = 8;   // 達此筆數才完全採用觀察資料；之間與模擬值混合
 const OBS_PCT = { 1: 10, 2: 30, 3: 50, 4: 70, 5: 90 };
@@ -46,13 +46,14 @@ export function modelEval(place, observations) {
 }
 // 各地點模型狀態；mode：demo＝無任何地點通過驗證（全部為模擬／混合），partial／model
 export function modelReport(observations = []) {
-  const rows = Object.values(PLACES).map((p) => ({ place: p, ...modelEval(p, observations) }));
+  const rows = Object.values(PLACES).filter((p) => !p.nodata).map((p) => ({ place: p, ...modelEval(p, observations) }));
   const ready = rows.filter((r) => r.status === 'ready').length;
   return { rows, ready, mode: ready === 0 ? 'demo' : ready === rows.length ? 'model' : 'partial', minSamples: MODEL_MIN_SAMPLES };
 }
 
 // 預測某地點在 (星期, 分鐘) 的人潮。資料不足時回傳透明的「模擬」值。
 export function predictCrowd(place, minute, observations = [], day = null) {
+  if (place.nodata) return { pct: 50, source: 'none', n: 0, sufficiency: '不足', note: '自選地點，沒有人潮資料（以中性值 50% 排程）' };
   const sim = simulate(place, minute);
   const ev = observations.length >= MODEL_MIN_SAMPLES ? modelEval(place, observations) : null;
   if (ev?.status === 'ready' && day != null) {

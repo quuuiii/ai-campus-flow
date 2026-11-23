@@ -76,7 +76,7 @@ function crowdPane(ctx) {
   <div class="grid2" style="align-items:start">
   <section class="card"><div class="card-h"><h2>${ic('plus')}新增觀察</h2></div>
     <form id="obsForm" novalidate><div class="form-err" id="obsErr" role="alert"></div>
-      <label class="f"><span>地點</span><select name="placeId">${Object.values(PLACES).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label>
+      <label class="f"><span>地點</span><select name="placeId">${Object.values(PLACES).filter((p) => !p.nodata).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label>
       <div class="f"><span style="display:block;margin-bottom:6px;font-weight:700">擁擠度</span><div class="rate" role="radiogroup" aria-label="擁擠度">${[[1, '很空'], [2, '偏空'], [3, '普通'], [4, '擁擠'], [5, '爆滿']].map(([n, t]) => `<label><input type="radio" name="crowd" value="${n}" ${n === 3 ? 'checked' : ''}><span>${n}<small>${t}</small></span></label>`).join('')}</div></div>
       <div class="two"><label class="f"><span>排隊分鐘（選填）</span><input name="queue" type="number" inputmode="numeric" min="0" max="180" placeholder="例如 5"></label>
       <label class="f"><span>觀察方式</span><select name="method" id="obsMethod"><option value="onsite">現場觀察（現在）</option><option value="manual">事後紀錄</option></select></label></div>
