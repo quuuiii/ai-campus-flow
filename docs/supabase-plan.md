@@ -9,7 +9,8 @@
 | 表 / view | 用途 | 重點欄位 |
 |---|---|---|
 | `places` | 可回報的地點（與前端代碼一致） | `id`、`category`、`active`（停業改 false，不刪歷史） |
-| `profiles` | 登入者角色 | `role`：`member` / `admin` |
+| `profiles` | 登入者角色 | `role`：`reporter`（新登入，回報需審核）／`member`（管理員確認的組員，直接核可）／`admin` |
+| `member_list` | 管理員看成員 email 與角色（僅 admin 可讀） | |
 | `crowd_observations` | 人潮觀察 | `client_id`（去重）、`observed_at`、`place_id`、`crowd_level` 1–5、`queue_minutes`、`method`、`source`（app / csv_import / field_team）、`status`（pending / approved / rejected）、`reporter`、`device_hash`、`reviewed_by/at`、`created_at` |
 | `crowd_observations_public` | 對外唯讀：只有已核可、不含回報者與裝置 | |
 | `crowd_dashboard` | 各地點筆數、天數、最近時間 | |
@@ -23,7 +24,7 @@
                成功：移出佇列
                離線 / 5xx / 429 限流：留在佇列，上線或下次開啟自動重送
                其他 4xx（資料被拒）：標記「被拒絕」並顯示原因，可手動重試
-伺服器 trigger：決定 status（登入成員→approved；匿名→pending）、填 reporter、檢查地點、限流
+伺服器 trigger：決定 status（member/admin→approved；匿名與 reporter→pending）、填 reporter、檢查地點、限流
 管理員：在後台審核 pending → approved / rejected
 下載：GET crowd_observations_public（只有 approved）→ 存 campus-flow-remote-obs-v1
 預測／模型／儀表板 = 本機紀錄 ∪ 團隊資料（以 client_id 去重，本機優先）
@@ -48,14 +49,22 @@
 ## 6. 你需要做的設定（約 15 分鐘）
 1. 到 <https://supabase.com> 用 GitHub 登入 → New project（Free 方案即可，區域選 Northeast Asia (Tokyo)）。**我不會代你建立帳號或任何付費資源。**
 2. 左側 **SQL Editor** → 貼上 `supabase/schema.sql` 全文 → Run。到 **Table Editor** 確認三張表都顯示 RLS enabled。
-3. **Authentication → Providers**：開啟 Email（magic link）。組員登入一次後，到 `profiles` 表把你自己的 `role` 改成 `admin`。
+3. **Authentication → Providers**：確認 Email 已開啟（magic link）。
+   **Authentication → URL Configuration**：Site URL 填 `https://ai-campus-flow-qtg2.vercel.app`；Redirect URLs 加入同一網址，若要在 Vercel 預覽版測試再加 `https://*-quuuiiis-projects.vercel.app/**`（實際網域以 Vercel 預覽網址為準）。
+   你先在網站「設定」頁用 email 登入一次，再到 Supabase **Table Editor → profiles** 把自己那列的 `role` 改成 `admin`（只有第一位管理員需要在後台改）。之後組員的角色可以直接在網站「設定 → 載入待審與成員」裡調整。
 4. **Project Settings → API**：複製 `Project URL` 與 `anon public` key（**不要**複製 `service_role`）。
 5. **Vercel → ai-campus-flow-qtg2 → Settings → Environment Variables** 新增：
    - `VITE_SUPABASE_URL` = 剛剛的 Project URL（形如 `https://xxxx.supabase.co`）
    - `VITE_SUPABASE_ANON_KEY` = anon public key
 6. Vercel → Deployments → 最新一筆 → Redeploy。打開網站 → 探索 → 人潮觀察，「團隊同步」應顯示「已設定」。
 
-## 7. 尚未完成
-- App 內的登入畫面（目前所有人都以匿名身分上傳 → 全部進待審）。下一步：加 magic link 登入，成員回報直接核可。
-- App 內的管理員審核頁（目前請在 Supabase 後台的 `crowd_review_queue` 處理）。
+## 7. 登入與審核（App 內）
+- 設定頁：輸入 email → 收信點連結 → 回到網站即登入（token 從網址取出後立刻清除）。
+- 角色：新帳號是「回報者」，回報仍需審核；管理員在設定頁把組員改為「組員」後，其回報直接核可。
+- 管理員：設定頁「載入待審與成員」→ 逐筆核可／拒絕；調整成員角色。審核人與時間由資料庫記錄，審核時無法改動觀察內容。
+- 安全：登入後所有請求都用使用者自己的 token，權限完全由 RLS 決定；前端隱藏按鈕不是安全機制。
+
+## 8. 尚未完成
 - SQL 尚未在真實 Supabase 執行驗證；第一次執行若有錯誤，把錯誤訊息貼給我。
+- Supabase 免費方案內建寄信有每小時數量限制，組員多時可能要等或設定自己的 SMTP。
+- 沒有限制只能用學校信箱註冊（任何 email 都能登入成為「回報者」，但回報仍需審核）。
