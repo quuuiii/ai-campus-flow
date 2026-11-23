@@ -22,3 +22,7 @@ test('暫停營業的松苑、第九餐廳不在清單與地點庫', () => {
 test('每間店都有分類，且不含價格、營業時間或評價欄位', () => {
   for (const f of FOOD) { assert.ok(f.category); assert.deepEqual(Object.keys(f).sort(), ['area', 'category', 'name', 'type']); }
 });
+test('游藝館不是讀書或討論地點（團隊確認只有練舞空間）', () => {
+  assert.ok(!Object.values(PLACES).some((p) => /游藝/.test(p.name)));
+  assert.ok(!Object.values(PLACES).some((p) => p.unverified));
+});

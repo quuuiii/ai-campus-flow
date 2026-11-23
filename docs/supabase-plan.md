@@ -1,36 +1,61 @@
-# Supabase 導入評估與計畫（尚未實作、尚未建立任何帳號或資源）
+# 多人資料蒐集：Supabase 架構、資料流程與安全設計
 
-## 為什麼要（以及何時才需要）
-目前觀察紀錄只存在各自手機的 localStorage，四位組員的資料無法合併，預測模型也就沒有足夠樣本。Supabase（Postgres + RLS + 自動 REST API）能讓大家寫入同一張表，且前端不需要自架後端。**若比賽期間用共用 Google 表單 / CSV 彙整就夠，可以不接**；接上後才有「團隊共同資料集」。
+> 狀態：前端同步程式與 SQL 已寫好並通過測試（用假的伺服器模擬）；**尚未連上任何真實 Supabase 專案**。沒有建立帳號、沒有金鑰。
 
-## 資料表
-見 `supabase/schema.sql`（草案）：`crowd_observations`（id、observed_at、place_id、crowd_level 1–5、queue_minutes、method、note、device_hash、created_at）。
-地點只能是前端 PLACES 白名單；課表**不上傳**（含個資、無必要）。
+## 1. 為什麼需要
+目前每支手機的觀察紀錄只存在自己的 localStorage，組員之間無法合併，模型永遠湊不到「每地點 20 筆、3 天」。接上 Supabase 後，大家回報的資料會進同一張表，儀表板與模型都改用「本機＋團隊」資料。
 
-## 安全（RLS）
-- 啟用 RLS；匿名角色只有 `insert` 與讀取公開欄位，不能 update / delete。
-- 前端只放 **anon key + project URL**（公開可見是設計如此，安全性來自 RLS）。**service_role key 絕不可進前端、repo、截圖或簡報。**
-- 清理壞資料、刪除請在 Supabase 後台（或僅限本機腳本）用 service_role 處理。
+## 2. 資料表（`supabase/schema.sql`）
+| 表 / view | 用途 | 重點欄位 |
+|---|---|---|
+| `places` | 可回報的地點（與前端代碼一致） | `id`、`category`、`active`（停業改 false，不刪歷史） |
+| `profiles` | 登入者角色 | `role`：`member` / `admin` |
+| `crowd_observations` | 人潮觀察 | `client_id`（去重）、`observed_at`、`place_id`、`crowd_level` 1–5、`queue_minutes`、`method`、`source`（app / csv_import / field_team）、`status`（pending / approved / rejected）、`reporter`、`device_hash`、`reviewed_by/at`、`created_at` |
+| `crowd_observations_public` | 對外唯讀：只有已核可、不含回報者與裝置 | |
+| `crowd_dashboard` | 各地點筆數、天數、最近時間 | |
+| `crowd_review_queue` | 管理員待審清單 | |
 
-## 防濫用
-- 欄位 check constraint（範圍、長度、未來時間）。
-- `device_hash` + trigger 限流（每分鐘 ≤ 3 筆）；可再加 Cloudflare Turnstile 或「組員邀請碼」。
-- 若擔心外人亂填：改為 Supabase Auth（學校信箱 magic link），policy 改 `to authenticated`。
+## 3. 資料流程
+```
+回報（手機）→ 先存本機 localStorage（離線也能用）
+          → 加入「待上傳佇列」(campus-flow-outbox-v1)
+          → 有網路時 POST /rest/v1/crowd_observations?on_conflict=client_id
+               成功：移出佇列
+               離線 / 5xx / 429 限流：留在佇列，上線或下次開啟自動重送
+               其他 4xx（資料被拒）：標記「被拒絕」並顯示原因，可手動重試
+伺服器 trigger：決定 status（登入成員→approved；匿名→pending）、填 reporter、檢查地點、限流
+管理員：在後台審核 pending → approved / rejected
+下載：GET crowd_observations_public（只有 approved）→ 存 campus-flow-remote-obs-v1
+預測／模型／儀表板 = 本機紀錄 ∪ 團隊資料（以 client_id 去重，本機優先）
+```
+- 去重：每筆紀錄的前端 id 即 `client_id`（unique），重送或多台匯入同一份 CSV 都不會重複。
+- 刪除：App 裡刪除只刪本機；伺服器資料只有管理員能處理（沒有開放 delete policy）。
 
-## 從 localStorage 遷移
-1. 保留 localStorage 為「離線暫存」：寫入時先存本機，連線後再批次上傳。
-2. 首次連線時，把本機觀察用 CSV 匯入邏輯（已實作 `importObservationsCSV`，含去重）轉成 insert；以 `id` 或 (observed_at, place_id, crowd_level) 去重。
-3. 上傳成功才標記已同步，**不刪除**本機資料。
+## 4. 安全設計
+- **金鑰**：前端只用 `anon` key（公開是 Supabase 的設計，安全靠 RLS）。`service_role` key 絕不可放進前端、repo、截圖或簡報。
+- **RLS**（全部資料表啟用）：
+  - 任何人可新增觀察，但 `status`、`reporter`、審核欄位由伺服器 trigger 覆寫，前端無法偽造「已核可」。
+  - 匿名者不能直接讀表，只能讀去識別化的 public view。
+  - 登入成員可讀已核可資料與自己的回報；只有 admin 可更新（審核）。
+  - 不提供任何 delete policy。
+- **防濫用**：欄位範圍檢查、時間不可在未來、地點必須在白名單且 active、同裝置／同帳號 10 分鐘最多 5 筆（回 HTTP 429）、匿名資料需審核。
+- **個資**：不收姓名、學號；`device_hash` 是隨機字串，只用於限流且不對外公開。
 
-## CSV 匯入 / 匯出
-App 已支援匯出（UTF-8 BOM，Excel 直接開得到繁體中文）與匯入（驗證、去重）。也可在 Supabase 後台 Table Editor 直接 Import CSV。
+## 5. CSV
+- App：匯出（UTF-8 BOM、台灣時間，Excel 可直接開）、匯入（逐列驗證、去重），匯入的資料只存本機，不會自動上傳。
+- 管理員：可在 Supabase Table Editor 匯入 CSV 到 `crowd_observations`（`source` 填 `csv_import`、`client_id` 用 CSV 的 id 欄），或用 SQL Editor 匯出 `crowd_observations_public`。
 
-## 你需要自己做的步驟（我不會代你建立付費或帳號資源）
-1. 到 supabase.com 用 GitHub 登入，建立免費專案（Free plan 足夠），區域選 Northeast Asia。
-2. SQL Editor 貼上 `supabase/schema.sql` 執行；到 Table Editor 確認 RLS 為 Enabled。
-3. Settings → API 複製 **Project URL** 與 **anon public key**（不要複製 service_role）。
-4. Vercel → Project → Settings → Environment Variables 新增 `VITE_SUPABASE_URL`、`VITE_SUPABASE_ANON_KEY`，重新部署。
-5. 回報給我後，我再實作 `src/lib/supabase.js`（同步佇列、錯誤處理）並加測試。
+## 6. 你需要做的設定（約 15 分鐘）
+1. 到 <https://supabase.com> 用 GitHub 登入 → New project（Free 方案即可，區域選 Northeast Asia (Tokyo)）。**我不會代你建立帳號或任何付費資源。**
+2. 左側 **SQL Editor** → 貼上 `supabase/schema.sql` 全文 → Run。到 **Table Editor** 確認三張表都顯示 RLS enabled。
+3. **Authentication → Providers**：開啟 Email（magic link）。組員登入一次後，到 `profiles` 表把你自己的 `role` 改成 `admin`。
+4. **Project Settings → API**：複製 `Project URL` 與 `anon public` key（**不要**複製 `service_role`）。
+5. **Vercel → ai-campus-flow-qtg2 → Settings → Environment Variables** 新增：
+   - `VITE_SUPABASE_URL` = 剛剛的 Project URL（形如 `https://xxxx.supabase.co`）
+   - `VITE_SUPABASE_ANON_KEY` = anon public key
+6. Vercel → Deployments → 最新一筆 → Redeploy。打開網站 → 探索 → 人潮觀察，「團隊同步」應顯示「已設定」。
 
-## 風險
-免費專案閒置會暫停；資料屬於校園眾包、品質需靠規範（見 AI 架構文件）；若要公開給全校使用，需要隱私說明。
+## 7. 尚未完成
+- App 內的登入畫面（目前所有人都以匿名身分上傳 → 全部進待審）。下一步：加 magic link 登入，成員回報直接核可。
+- App 內的管理員審核頁（目前請在 Supabase 後台的 `crowd_review_queue` 處理）。
+- SQL 尚未在真實 Supabase 執行驗證；第一次執行若有錯誤，把錯誤訊息貼給我。

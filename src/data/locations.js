@@ -7,6 +7,7 @@ export const SOURCES = {
   bldg: '教務處 上課大樓代號表',
   bus: '中大交通路線資訊（校園公車站牌）',
   safe: '中大安全地圖（SOS 求救點位置）',
+  team: '團隊實地確認（2026-11）',
   veg: '總務處 蔬食友善餐廳名單（2022，店家可能已異動）',
 };
 
@@ -28,7 +29,7 @@ export const CAMPUS_LOCATIONS = [
   { name: '後門（餐飲區）', kind: '用餐', description: '後門一帶有早餐與簡餐店家，另見「後門美食」分頁。', source: 'safe', query: '國立中央大學 後門' },
   { name: '宵夜街', kind: '用餐', description: '校內安全地圖標示有求救點的區域，店家另見「宵夜街美食」分頁。', source: 'safe', query: '國立中央大學 宵夜街' },
   { name: '依仁堂', kind: '活動', description: '校園公車站牌「依仁堂」；安全地圖標示的活動場所。', source: 'bus', query: '國立中央大學 依仁堂' },
-  { name: '游藝館', kind: '活動', description: '校園平面圖與安全地圖上標示的建築。', source: 'safe', query: '國立中央大學 游藝館' },
+  { name: '游藝館', kind: '活動', description: '有練舞空間；沒有開放的討論空間。', source: 'team', query: '國立中央大學 游藝館' },
   { name: '百花川', kind: '休閒', description: '橫貫校園的引水渠道；右側為百花川文學步道，鑄刻十位文壇校友的作品。', source: 'guide', query: '國立中央大學 百花川' },
   { name: '中大湖', kind: '休閒', description: '校園導覽圖標示的湖區（南側、湖島設有求救點）。', source: 'safe', query: '國立中央大學 中大湖' },
   { name: '中大路木棉花道', kind: '休閒', description: '筆直的校門大道；學校導覽稱春夏之交木棉花開。', source: 'guide', query: '國立中央大學 中大路' },

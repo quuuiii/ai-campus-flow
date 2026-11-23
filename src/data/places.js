@@ -23,10 +23,11 @@ export const KINDS = {
 export const PLACES = {
   backdoor: { id: 'backdoor', name: '後門餐飲區', short: '後門', kinds: ['meal'], eat: 30, base: 30, peak: 55 },
   female14: { id: 'female14', name: '女十四舍 B1 商場', short: '女十四', kinds: ['meal'], eat: 30, base: 25, peak: 30 },
-  nightmarket: { id: 'nightmarket', name: '宵夜街（外帶）', short: '宵夜街外帶', unverified: '中午時段是否有店家營業尚未查證', kinds: ['meal'], eat: 20, takeaway: true, base: 24, peak: 24 },
+  nightmarket: { id: 'nightmarket', name: '宵夜街（外帶）', short: '宵夜街外帶', kinds: ['meal'], eat: 20, takeaway: true, base: 24, peak: 24 },
   mainlib: { id: 'mainlib', name: '總圖書館 閱覽區', short: '總圖書館', kinds: ['study', 'homework'], vac: 68, quiet: 4 },
   zhongzheng: { id: 'zhongzheng', name: '中正圖書館 K書中心', short: 'K書中心', kinds: ['study', 'homework'], vac: 52, quiet: 5 },
-  youyi: { id: 'youyi', name: '游藝館', short: '游藝館', unverified: '館內是否有開放的討論空間尚未查證', kinds: ['study', 'homework', 'group'], vac: 76, quiet: 2 },
+  // 小組討論：校內查無開放給學生的討論室公開資料，改由使用者自選地點；不提供人潮或步行估計
+  self: { id: 'self', name: '自選討論地點（例如空教室、系館）', short: '自選地點', kinds: ['group'], nodata: true },
   admin: { id: 'admin', name: '行政大樓', short: '行政大樓', kinds: ['errand'], base: 20, peak: 15 },
 };
 
@@ -37,16 +38,16 @@ export const originOptions = () => [...Object.entries(BUILDINGS).map(([id, name]
 // 兩點間預估步行分鐘（人工估算；實際請以地圖為準）
 const W = {
   'mgmt2|backdoor': 8, 'mgmt2|female14': 9, 'mgmt2|nightmarket': 11,
-  'mgmt2|mainlib': 8, 'mgmt2|zhongzheng': 7, 'mgmt2|youyi': 6, 'mgmt2|admin': 6,
+  'mgmt2|mainlib': 8, 'mgmt2|zhongzheng': 7, 'mgmt2|admin': 6,
   'eng5|backdoor': 6, 'eng5|female14': 7, 'eng5|nightmarket': 7,
-  'eng5|mainlib': 6, 'eng5|zhongzheng': 5, 'eng5|youyi': 4, 'eng5|admin': 8,
+  'eng5|mainlib': 6, 'eng5|zhongzheng': 5, 'eng5|admin': 8,
   'mgmt2|eng5': 9,
-  'mainlib|zhongzheng': 3, 'mainlib|youyi': 5, 'zhongzheng|youyi': 5,
+  'mainlib|zhongzheng': 3,
   'backdoor|nightmarket': 4, 'backdoor|female14': 8, 'nightmarket|female14': 7,
 };
 export const DEFAULT_WALK = 7;
 export const walk = (a, b) => {
-  if (a === b) return 0;
+  if (a === b || a === 'self' || b === 'self') return 0; // 自選地點不估算步行
   if (!a || !b) return 5;
   return W[a + '|' + b] ?? W[b + '|' + a] ?? DEFAULT_WALK;
 };

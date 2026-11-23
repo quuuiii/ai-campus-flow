@@ -6,7 +6,7 @@ import { computeSlots } from '../engine/scheduler.js';
 import { predictCrowd, bestTime, levelOf, approx, modelReport, SOURCE_LABEL } from '../engine/crowd.js';
 
 export function renderHome(ctx) {
-  const { state } = ctx, now = nowTW(), obs = ctx.obs();
+  const { state } = ctx, now = nowTW(), obs = ctx.allObs();
   const today = state.courses.filter((c) => +c.day === now.day).sort((a, b) => toMin(a.start) - toMin(b.start));
   const next = today.find((c) => toMin(c.start) > now.minute);
   const cur = today.find((c) => toMin(c.start) <= now.minute && toMin(c.end) > now.minute);
@@ -16,7 +16,7 @@ export function renderHome(ctx) {
   const dateStr = new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
   const left = next ? toMin(next.start) - now.minute : null;
   const cd = left == null ? '' : left >= 60 ? `${Math.floor(left / 60)} 小時 ${left % 60} 分` : `${left} 分鐘`;
-  const crowdPlaces = [PLACES.backdoor, PLACES.female14, PLACES.mainlib, PLACES.zhongzheng, PLACES.youyi];
+  const crowdPlaces = [PLACES.backdoor, PLACES.female14, PLACES.mainlib, PLACES.zhongzheng];
   const rows = crowdPlaces.map((p) => {
     const r = predictCrowd(p, now.minute, obs, now.day), study = p.vac != null, pct = approx(study ? 100 - r.pct : r.pct);
     return `<div class="crowd-row"><div class="li-main"><b>${esc(p.short)}</b><small>${study ? '空位' : '人潮'} ${pct}%${study ? '' : '（' + levelOf(r.pct) + '）'}</small></div><div class="meter" aria-hidden="true"><i class="${study ? '' : r.pct >= 70 ? 'hi' : r.pct >= 40 ? 'mid' : ''}" style="width:${pct}%"></i></div><i class="tag src-${r.source}">${SOURCE_LABEL[r.source]}</i></div>`;

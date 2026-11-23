@@ -37,9 +37,12 @@ test(`一致性：${scenarios.length} 種情境（時間/步行/排隊/緩衝/�
       walkSum += it.walkIn + (it.isLast && it.slot.hasNext ? it.walkOut : 0);
       // 理由中的數字必須等於卡片資料
       const text1 = explain(it).join('\n');
-      if (it.task.kind === 'meal' || it.task.kind === 'errand') assert.ok(text1.includes(`人潮約 ${approx(it.pct)}%`), `理由人潮不符 ${tag}`);
-      else assert.ok(text1.includes(`空位率約 ${approx(100 - it.pct)}%`), `理由空位不符 ${tag}`);
-      assert.ok(text1.includes(`步行約 ${it.walkIn} 分`), `理由步行不符 ${tag}`);
+      if (it.place.nodata) { assert.match(text1, /沒有這裡的人潮與步行資料/); assert.equal(it.walkIn, 0); }
+      else {
+        if (it.task.kind === 'meal' || it.task.kind === 'errand') assert.ok(text1.includes(`人潮約 ${approx(it.pct)}%`), `理由人潮不符 ${tag}`);
+        else assert.ok(text1.includes(`空位率約 ${approx(100 - it.pct)}%`), `理由空位不符 ${tag}`);
+        assert.ok(text1.includes(`步行約 ${it.walkIn} 分`), `理由步行不符 ${tag}`);
+      }
       if (it.queue) assert.ok(text1.includes(`排隊約 ${it.queue} 分`), `理由排隊不符 ${tag}`);
       // 候選清單中被選中者與所選地點一致
       assert.equal(it.alts.filter((a) => a.picked).map((a) => a.id)[0], it.place.id);

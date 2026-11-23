@@ -3,11 +3,12 @@ import {
   House, CalendarDays, Compass, Settings, Sparkles, Clock, MapPin, Footprints, Users, Utensils, BookOpen, PenLine,
   MessagesSquare, Briefcase, Check, Square, SquareCheck, RefreshCw, ArrowUp, ArrowDown, Navigation, Info, Trash2,
   Pencil, Plus, Download, Upload, TriangleAlert, CircleCheck, OctagonAlert, Leaf, Zap, Search, ClipboardList,
-  Route, Target, FlaskConical, Eye, X, Database, Timer, Map, Coffee,
+  Route, Target, FlaskConical, Eye, X, Database, Timer, Map, Coffee, ChartColumn, Cloud,
 } from 'lucide';
 
 const ICONS = {
   home: House, calendar: CalendarDays, compass: Compass, settings: Settings, sparkles: Sparkles, clock: Clock, pin: MapPin,
+  chart: ChartColumn, cloud: Cloud,
   walk: Footprints, users: Users, meal: Utensils, study: BookOpen, homework: PenLine, group: MessagesSquare, errand: Briefcase,
   check: Check, square: Square, done: SquareCheck, refresh: RefreshCw, up: ArrowUp, down: ArrowDown, nav: Navigation, info: Info,
   trash: Trash2, edit: Pencil, plus: Plus, download: Download, upload: Upload, warn: TriangleAlert, ok: CircleCheck, bad: OctagonAlert,

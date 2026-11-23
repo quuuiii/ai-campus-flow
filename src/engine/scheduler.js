@@ -306,7 +306,8 @@ export function explain(it) {
     if (p.takeaway) out.push('外帶可縮短用餐時間，把空檔留給下一件事');
     if (it.slack != null) out.push(`預留 ${it.slack} 分鐘緩衝，確保準時到${BUILDINGS[it.slot.next] || '下一堂課'}`);
   } else if (t.kind === 'study' || t.kind === 'homework' || t.kind === 'group') {
-    out.push(`空位率約 ${approx(100 - it.pct)}%（${srcTag}）｜安靜程度 ${p.quiet}/5（團隊假設，未實測）｜${walkTxt}`);
+    if (p.nodata) out.push('地點由你自選，系統沒有這裡的人潮與步行資料，只負責安排時間');
+    else out.push(`空位率約 ${approx(100 - it.pct)}%（${srcTag}）｜安靜程度 ${p.quiet}/5（團隊假設，未實測）｜${walkTxt}`);
     if (it.dur >= 50 && t.kind !== 'group') out.push('專注模式：25 分鐘專注 + 5 分鐘休息，重複兩輪');
   } else {
     out.push(`人潮約 ${approx(it.pct)}%（${srcTag}）｜${walkTxt}`);
