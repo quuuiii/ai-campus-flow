@@ -42,3 +42,4 @@ npm run dev
 ## 測試
 - `npm test`：單元／不變條件／一致性（Planner 216 種情境）／模型／餐廳清單守門測試。
 - 手機端對端：`npm run build && npx vite preview --port 4173`，另開終端機 `python3 -I e2e/mobile.py`（需 Playwright + Chromium）。
+- 團隊同步端對端（假伺服器）：見 `e2e/sync.py` 開頭註解。

@@ -3,6 +3,7 @@ import './style.css';
 import { ic } from './icons.js';
 import { COURSE_COLORS } from './data/demo.js';
 import { loadState, saveState, loadObservations, saveObservations } from './store.js';
+import { syncConfig, enqueue, flush, pull, remoteObs, mergeObs, outbox, retryFailed } from './lib/sync.js';
 import { renderHome, bindHome } from './pages/home.js';
 import { renderPlan, bindPlan } from './pages/plan.js';
 import { renderSchedule, bindSchedule } from './pages/schedule.js';
@@ -13,6 +14,9 @@ const TABS = [['home', 'home', '首頁', renderHome, bindHome], ['plan', 'sparkl
 
 const { state, report } = loadState();
 let observations = loadObservations().list;
+const syncCfg = syncConfig(import.meta.env);
+let merged = null; // 本機＋團隊資料，快取到資料變動為止（模型評估以陣列為快取鍵）
+const syncState = { lastPull: null, lastError: '', busy: false };
 document.documentElement.style.cssText += COURSE_COLORS.map((c, i) => `--c${i}:${c};`).join('');
 
 const toast = (msg, type = '') => {
@@ -23,7 +27,25 @@ const toast = (msg, type = '') => {
 const ctx = {
   state, toast,
   obs: () => observations,
-  setObs: (l) => { observations = l; return saveObservations(l); },
+  setObs: (l) => { observations = l; merged = null; return saveObservations(l); },
+  // 預測、模型、儀表板用：本機紀錄＋團隊已核可資料（未設定同步時只有本機）
+  allObs: () => (merged ??= syncCfg ? mergeObs(observations, remoteObs(localStorage)) : observations),
+  sync: {
+    configured: !!syncCfg, state: syncState,
+    queue: () => outbox(localStorage),
+    enqueue: (o) => (syncCfg ? enqueue(localStorage, o) : false),
+    retry: () => { retryFailed(localStorage); return ctx.sync.run(); },
+    run: async () => {
+      if (!syncCfg || syncState.busy) return;
+      syncState.busy = true;
+      try {
+        const f = await flush(syncCfg, localStorage);
+        const p = await pull(syncCfg, localStorage);
+        if (p.ok) { syncState.lastPull = p.at; merged = null; }
+        syncState.lastError = p.ok ? (f.failed ? `${f.failed} 筆上傳被拒絕` : '') : p.error;
+      } finally { syncState.busy = false; render(true); }
+    },
+  },
   save: () => { if (!saveState(state)) toast('無法儲存：瀏覽器儲存空間不可用，資料將在關閉後消失', 'bad'); },
   go: (tab) => { state.ui.tab = tab; ctx.save(); render(); window.scrollTo(0, 0); },
   rerender: () => render(true),
@@ -47,4 +69,5 @@ render();
 if (report.corruptBackup) toast('偵測到損壞的資料，已備份後重設', 'bad');
 else if (report.migrated) toast('已從舊版載入你的課表', 'ok');
 else if (report.dropped) toast(`有 ${report.dropped} 筆課程資料無效，已略過`, '');
+if (syncCfg) { ctx.sync.run(); window.addEventListener('online', () => ctx.sync.run()); }
 if ('serviceWorker' in navigator && import.meta.env.PROD) navigator.serviceWorker.register('./sw.js').catch(() => {});

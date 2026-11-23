@@ -6,7 +6,7 @@ import { computeSlots } from '../engine/scheduler.js';
 import { predictCrowd, bestTime, levelOf, approx, modelReport, SOURCE_LABEL } from '../engine/crowd.js';
 
 export function renderHome(ctx) {
-  const { state } = ctx, now = nowTW(), obs = ctx.obs();
+  const { state } = ctx, now = nowTW(), obs = ctx.allObs();
   const today = state.courses.filter((c) => +c.day === now.day).sort((a, b) => toMin(a.start) - toMin(b.start));
   const next = today.find((c) => toMin(c.start) > now.minute);
   const cur = today.find((c) => toMin(c.start) <= now.minute && toMin(c.end) > now.minute);

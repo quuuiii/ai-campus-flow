@@ -11,7 +11,7 @@ const MODES = [['crowd', 'leaf', '避開人潮'], ['walk', 'walk', '最短步行
 const OVERLOAD = '再幫我加一場兩小時的小組討論';
 const HOUR = (m) => fmt(m);
 
-export const planCtx = (ctx) => ({ courses: ctx.state.courses, ...ctx.state.plan, crowd: defaultCrowdFn(ctx.obs(), ctx.state.plan.day) });
+export const planCtx = (ctx) => ({ courses: ctx.state.courses, ...ctx.state.plan, crowd: defaultCrowdFn(ctx.allObs(), ctx.state.plan.day) });
 export const srcTag = (s) => `<i class="tag src-${s}">${SOURCE_LABEL[s] || '模擬'}</i>`;
 const crowdCls = (p) => (p >= 80 ? 'hi' : p >= 60 ? 'mid' : '');
 
