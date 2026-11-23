@@ -86,7 +86,7 @@ function slotBlock(sl, i, plan, pl) {
 function taskCard(it, pl) {
   const t = it.task, k = KINDS[t.kind], done = !!pl.done[t.id], idx = pl.order.indexOf(t.id);
   const study = ['study', 'homework', 'group'].includes(t.kind);
-  const pill = study ? `<i class="pill ${crowdCls(it.pct)}">空位約 ${approx(100 - it.pct)}%</i><i class="pill q">安靜 ${it.place.quiet}/5 <small>假設</small></i>` : `<i class="pill ${crowdCls(it.pct)}">人潮約 ${approx(it.pct)}%</i>${it.queue ? `<i class="pill hi">估計排隊 ${it.queue} 分</i>` : ''}`;
+  const pill = it.place.nodata ? '<i class="tag">無人潮資料</i>' : study ? `<i class="pill ${crowdCls(it.pct)}">空位約 ${approx(100 - it.pct)}%</i><i class="pill q">安靜 ${it.place.quiet}/5 <small>假設</small></i>` : `<i class="pill ${crowdCls(it.pct)}">人潮約 ${approx(it.pct)}%</i>${it.queue ? `<i class="pill hi">估計排隊 ${it.queue} 分</i>` : ''}`;
   const reasons = explain(it);
   const main = ['避開', '彈性縮短', '剛好', '預計', '專注模式'].map((p) => reasons.find((r) => r.startsWith(p))).find(Boolean) || reasons[0];
   const rest = reasons.filter((r) => r !== main);
@@ -105,7 +105,7 @@ function taskCard(it, pl) {
     <div class="row">
       <button class="btn sm ${done ? 'primary' : ''}" data-done="${t.id}" aria-pressed="${done}">${ic(done ? 'done' : 'square', 16)}${done ? '已完成' : '完成'}</button>
       ${alts.length ? `<button class="btn sm" data-alt="${t.id}">${ic('refresh', 16)}換地點</button>` : ''}
-      <a class="btn sm outline" href="${mapsUrl(it.from, it.place.id)}" target="_blank" rel="noopener noreferrer">${ic('nav', 16)}步行導航</a>
+      ${it.place.nodata ? '' : `<a class="btn sm outline" href="${mapsUrl(it.from, it.place.id)}" target="_blank" rel="noopener noreferrer">${ic('nav', 16)}步行導航</a>`}
     </div>
     <details class="more"><summary>${ic('info', 16)}理由、其他地點、順序</summary>
       ${rest.length ? `<ul class="why">${rest.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
