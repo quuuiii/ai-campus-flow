@@ -1,9 +1,9 @@
 // 人潮估計。資料來源分三類，介面上必須清楚區分：
 //   observed  真實觀察：由團隊現場觀察紀錄推得
-//   simulated 人工模擬：示範參數（下課尖峰規則、假設的選課人數與 Wi-Fi 密度），不是實測
-//   model     模型預測：尚未實作，保留給日後（目前不會回傳）
+//   simulated 人工模擬：團隊設定的示範參數（基準值＋下課尖峰規則），未使用任何 Wi-Fi、選課或人流感測資料
+//   model     模型預測：統計模型（engine/model.js），只有在某地點通過留一日驗證後才回傳
 import { PLACES } from '../data/places.js';
-import { nowTW } from '../util.js';
+import { nowTW, isoTW } from '../util.js';
 import { evaluate, kernelPredict, MIN_SAMPLES as MODEL_MIN_SAMPLES } from './model.js';
 
 export const SOURCE_LABEL = { observed: '觀察', simulated: '模擬', model: '模型' };
@@ -34,7 +34,7 @@ export function samplesFor(placeId, observations) {
     if (obsPlaceId(o) !== placeId || !OBS_PCT[o.crowd]) continue;
     const t = nowTW(new Date(o.timestamp));
     if (Number.isNaN(t.minute)) continue;
-    out.push({ day: t.day, minute: t.minute, pct: OBS_PCT[o.crowd], date: String(o.timestamp).slice(0, 10) });
+    out.push({ day: t.day, minute: t.minute, pct: OBS_PCT[o.crowd], date: isoTW(new Date(o.timestamp)).slice(0, 10) }); // 以台灣日期分組，避免同一天被切進不同驗證折
   }
   return out;
 }

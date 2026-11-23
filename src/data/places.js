@@ -23,10 +23,10 @@ export const KINDS = {
 export const PLACES = {
   backdoor: { id: 'backdoor', name: '後門餐飲區', short: '後門', kinds: ['meal'], eat: 30, base: 30, peak: 55 },
   female14: { id: 'female14', name: '女十四舍 B1 商場', short: '女十四', kinds: ['meal'], eat: 30, base: 25, peak: 30 },
-  nightmarket: { id: 'nightmarket', name: '宵夜街（外帶）', short: '宵夜街外帶', kinds: ['meal'], eat: 20, takeaway: true, base: 24, peak: 24 },
+  nightmarket: { id: 'nightmarket', name: '宵夜街（外帶）', short: '宵夜街外帶', unverified: '中午時段是否有店家營業尚未查證', kinds: ['meal'], eat: 20, takeaway: true, base: 24, peak: 24 },
   mainlib: { id: 'mainlib', name: '總圖書館 閱覽區', short: '總圖書館', kinds: ['study', 'homework'], vac: 68, quiet: 4 },
   zhongzheng: { id: 'zhongzheng', name: '中正圖書館 K書中心', short: 'K書中心', kinds: ['study', 'homework'], vac: 52, quiet: 5 },
-  youyi: { id: 'youyi', name: '游藝館 討論空間', short: '游藝館', kinds: ['study', 'homework', 'group'], vac: 76, quiet: 2 },
+  youyi: { id: 'youyi', name: '游藝館', short: '游藝館', unverified: '館內是否有開放的討論空間尚未查證', kinds: ['study', 'homework', 'group'], vac: 76, quiet: 2 },
   admin: { id: 'admin', name: '行政大樓', short: '行政大樓', kinds: ['errand'], base: 20, peak: 15 },
 };
 
@@ -52,4 +52,4 @@ export const walk = (a, b) => {
 };
 
 export const PROVENANCE =
-  '數據來源分三類：「觀察」＝團隊現場觀察紀錄；「模擬」＝人工設定的示範參數（假設的選課人數分布、Wi-Fi 密度與下課尖峰規則），並非即時感測；「模型」＝尚未實作，目前不會出現。步行時間為人工預估。';
+  '數據來源分三類：「觀察」＝團隊現場觀察紀錄；「模擬」＝團隊人工設定的示範參數（基準值與下課尖峰規則），沒有使用 Wi-Fi、選課或人流感測資料；「模型」＝統計模型，只有在該地點的觀察資料通過驗證後才會出現。步行時間為人工預估。';

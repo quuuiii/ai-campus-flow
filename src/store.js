@@ -2,7 +2,7 @@
 import { demoCourses, DEMO_TEXT } from './data/demo.js';
 import { BUILDINGS, PLACES, KINDS } from './data/places.js';
 import { TIME_RE, toMin, uid, isoTW, toCSV, parseCSV, fmtTW } from './util.js';
-import { parseTasks } from './engine/scheduler.js';
+import { parseRequest } from './engine/scheduler.js';
 
 export const KEYS = { state: 'campus-flow-v2', legacy: 'campus-flow-v1', obs: 'campus-flow-observations-v1' };
 export const MODES = ['crowd', 'walk', 'focus'];
@@ -38,8 +38,19 @@ export const sortCourses = (list) => [...list].sort((a, b) => a.day - b.day || t
 
 // ── 規劃設定 ──
 export function taskState(text) {
-  const tasks = parseTasks(text);
-  return { tasks, order: tasks.map((t) => t.id), overrides: {}, scale: {}, deferred: [], done: {} };
+  const { tasks, unknown, notes } = parseRequest(text);
+  return { tasks, unknown, notes, order: tasks.map((t) => t.id), overrides: {}, scale: {}, deferred: [], done: {} };
+}
+// 任務驗證（手動編輯的任務也會存進 localStorage，重新載入時逐筆檢查）
+export function sanitizeTask(t) {
+  if (!t || typeof t !== 'object' || !KINDS[t.kind] || typeof t.id !== 'string' || !/^[\w-]{1,40}$/.test(t.id)) return null;
+  const dur = Math.round(+t.dur);
+  if (!(dur >= 10 && dur <= 240)) return null;
+  const out = { id: t.id, kind: t.kind, dur, text: String(t.text ?? '').slice(0, 100) };
+  if (t.deadline != null) { const d = Math.round(+t.deadline); if (d >= 0 && d < 1440) out.deadline = d; }
+  if (Array.isArray(t.window) && t.window.length === 2 && t.window.every((x) => Number.isInteger(x) && x >= 0 && x <= 1440) && t.window[0] < t.window[1]) out.window = [...t.window];
+  if (t.manual) out.manual = true;
+  return out;
 }
 export function defaultPlan(courses, text = DEMO_TEXT) {
   const days = [...new Set(courses.map((c) => +c.day))].sort();
@@ -51,6 +62,12 @@ export function sanitizePlan(raw, courses) {
   if (!raw || typeof raw !== 'object') return d;
   const text = typeof raw.text === 'string' ? raw.text.slice(0, 300) : d.text;
   const p = { ...d, ...taskState(text), text };
+  // 若有已儲存（含手動修正）的任務，優先保留，不重新解析覆蓋
+  if (Array.isArray(raw.tasks)) {
+    const ts = raw.tasks.slice(0, 20).map(sanitizeTask).filter(Boolean);
+    if (ts.length === new Set(ts.map((t) => t.id)).size) { p.tasks = ts; p.order = ts.map((t) => t.id); p.unknown = []; p.notes = []; }
+  }
+  if (Array.isArray(raw.unknown)) p.unknown = raw.unknown.filter((x) => typeof x === 'string').slice(0, 10).map((x) => x.slice(0, 100));
   p.day = int(raw.day, 0, 6, d.day);
   p.mode = MODES.includes(raw.mode) ? raw.mode : d.mode;
   const s = int(raw.win?.start, 0, 1439, 540), e = int(raw.win?.end, 1, 1440, 1020);

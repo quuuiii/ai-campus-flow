@@ -17,7 +17,7 @@ export function assertValid(assert, plan, ctx) {
     assert.ok(it.start >= it.slot.s && it.end <= it.slot.e, `任務超出空堂：${it.task.id} ${it.start}-${it.end} 不在 ${it.slot.s}-${it.slot.e}`);
     assert.ok(it.start >= ctx.win.start && it.end <= ctx.win.end, '任務超出指定時間範圍');
     for (const [s, e] of cs) assert.ok(it.end <= s || it.start >= e, `與課程重疊：${it.task.id}`);
-    if (it.slot.next) assert.ok(it.end + it.walkOut + (ctx.buffer ?? 5) <= it.slot.e, `趕不上下一堂課：${it.task.id}`);
+    if (it.slot.hasNext) assert.ok(it.end + it.walkOut + (ctx.buffer ?? 5) <= it.slot.e, `趕不上下一堂課：${it.task.id}`);
     if (it.task.deadline != null) assert.ok(it.end <= it.task.deadline, `超過截止時間：${it.task.id}`);
     assert.ok(it.dur > 0);
   }
