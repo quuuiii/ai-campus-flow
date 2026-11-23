@@ -38,7 +38,7 @@ export function enqueue(storage, obs) {
 export const removeFromOutbox = (storage, id) => write(storage, OUTBOX_KEY, outbox(storage).filter((x) => x.id !== id));
 
 // 送出佇列。可重試錯誤（離線、5xx、429 限流）留在 pending；資料錯誤（其他 4xx）標記 failed 並保留原因。
-export async function flush(cfg, storage, fetchImpl = globalThis.fetch) {
+export async function flush(cfg, storage, fetchImpl = globalThis.fetch, token = null) {
   const q = outbox(storage);
   if (!cfg || !q.length) return { sent: 0, failed: 0, pending: q.length };
   const device = deviceHash(storage);
@@ -48,12 +48,13 @@ export async function flush(cfg, storage, fetchImpl = globalThis.fetch) {
     try {
       const res = await fetchImpl(`${cfg.url}/rest/v1/crowd_observations?on_conflict=client_id`, {
         method: 'POST',
-        headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}`, 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal' },
+        headers: { apikey: cfg.key, Authorization: `Bearer ${token || cfg.key}`, 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal' },
         body: JSON.stringify(toRow(item.obs, device)),
       });
       if (res.ok) { item.status = 'sent'; sent++; continue; }
       const msg = (await res.text().catch(() => '')).slice(0, 200);
-      if (res.status === 429 || res.status >= 500) item.error = res.status === 429 ? '回報太頻繁，稍後自動重送' : `伺服器錯誤 ${res.status}`;
+      if (res.status === 401) item.error = '登入已過期，請重新登入（資料保留在佇列）';
+      else if (res.status === 429 || res.status >= 500) item.error = res.status === 429 ? '回報太頻繁，稍後自動重送' : `伺服器錯誤 ${res.status}`;
       else { item.status = 'failed'; item.error = `資料被拒絕（${res.status}）${msg}`; }
     } catch { item.error = '目前離線，連線後自動重送'; break; }
   }
@@ -66,10 +67,10 @@ export function retryFailed(storage) {
 }
 
 // 下載團隊已核可資料（只讀公開 view，不含回報者與裝置資訊）
-export async function pull(cfg, storage, fetchImpl = globalThis.fetch) {
+export async function pull(cfg, storage, fetchImpl = globalThis.fetch, token = null) {
   if (!cfg) return { ok: false, error: '未設定' };
   try {
-    const res = await fetchImpl(`${cfg.url}/rest/v1/crowd_observations_public?select=*&order=observed_at.desc&limit=5000`, { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } });
+    const res = await fetchImpl(`${cfg.url}/rest/v1/crowd_observations_public?select=*&order=observed_at.desc&limit=5000`, { headers: { apikey: cfg.key, Authorization: `Bearer ${token || cfg.key}` } });
     if (!res.ok) return { ok: false, error: `下載失敗（${res.status}）` };
     const rows = await res.json();
     if (!Array.isArray(rows)) return { ok: false, error: '回應格式錯誤' };

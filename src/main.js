@@ -3,6 +3,7 @@ import './style.css';
 import { ic } from './icons.js';
 import { COURSE_COLORS } from './data/demo.js';
 import { loadState, saveState, loadObservations, saveObservations } from './store.js';
+import { sessionFromHash, saveSession, loadSession, validToken, whoami, sendMagicLink, signOut } from './lib/auth.js';
 import { syncConfig, enqueue, flush, pull, remoteObs, mergeObs, outbox, retryFailed } from './lib/sync.js';
 import { renderHome, bindHome } from './pages/home.js';
 import { renderPlan, bindPlan } from './pages/plan.js';
@@ -17,6 +18,17 @@ let observations = loadObservations().list;
 const syncCfg = syncConfig(import.meta.env);
 let merged = null; // 本機＋團隊資料，快取到資料變動為止（模型評估以陣列為快取鍵）
 const syncState = { lastPull: null, lastError: '', busy: false };
+// 登入連結回來：從網址 hash 取出 token 後立刻清除網址，避免 token 留在瀏覽紀錄
+const takeHash = () => {
+  if (!syncCfg || !/access_token=|error_description=/.test(location.hash)) return '';
+  const s = sessionFromHash(location.hash);
+  history.replaceState(null, '', location.pathname + location.search);
+  if (s?.error) return '登入失敗：' + s.error;
+  if (s) { saveSession(localStorage, s); return 'ok'; }
+  return '';
+};
+const authNotice = takeHash();
+const authState = { user: null, loading: false };
 document.documentElement.style.cssText += COURSE_COLORS.map((c, i) => `--c${i}:${c};`).join('');
 
 const toast = (msg, type = '') => {
@@ -30,6 +42,19 @@ const ctx = {
   setObs: (l) => { observations = l; merged = null; return saveObservations(l); },
   // 預測、模型、儀表板用：本機紀錄＋團隊已核可資料（未設定同步時只有本機）
   allObs: () => (merged ??= syncCfg ? mergeObs(observations, remoteObs(localStorage)) : observations),
+  auth: {
+    configured: !!syncCfg, state: authState,
+    signedIn: () => !!loadSession(localStorage),
+    token: () => validToken(syncCfg, localStorage),
+    send: (email) => sendMagicLink(syncCfg, email, location.origin + location.pathname),
+    load: async () => {
+      if (!syncCfg || authState.loading) return;
+      authState.loading = true;
+      try { const t = await validToken(syncCfg, localStorage); authState.user = t ? await whoami(syncCfg, t) : null; }
+      catch { /* 離線：保留上次資訊 */ } finally { authState.loading = false; render(true); }
+    },
+    signOut: async () => { await signOut(syncCfg, localStorage); authState.user = null; render(true); },
+  },
   sync: {
     configured: !!syncCfg, state: syncState,
     queue: () => outbox(localStorage),
@@ -39,8 +64,9 @@ const ctx = {
       if (!syncCfg || syncState.busy) return;
       syncState.busy = true;
       try {
-        const f = await flush(syncCfg, localStorage);
-        const p = await pull(syncCfg, localStorage);
+        const token = await validToken(syncCfg, localStorage);
+        const f = await flush(syncCfg, localStorage, undefined, token);
+        const p = await pull(syncCfg, localStorage, undefined, token);
         if (p.ok) { syncState.lastPull = p.at; merged = null; }
         syncState.lastError = p.ok ? (f.failed ? `${f.failed} 筆上傳被拒絕` : '') : p.error;
       } finally { syncState.busy = false; render(true); }
@@ -69,5 +95,6 @@ render();
 if (report.corruptBackup) toast('偵測到損壞的資料，已備份後重設', 'bad');
 else if (report.migrated) toast('已從舊版載入你的課表', 'ok');
 else if (report.dropped) toast(`有 ${report.dropped} 筆課程資料無效，已略過`, '');
-if (syncCfg) { ctx.sync.run(); window.addEventListener('online', () => ctx.sync.run()); }
+if (authNotice === 'ok') toast('登入成功', 'ok'); else if (authNotice) toast(authNotice, 'bad');
+if (syncCfg) { window.addEventListener('hashchange', () => { const n = takeHash(); if (n) { toast(n === 'ok' ? '登入成功' : n, n === 'ok' ? 'ok' : 'bad'); ctx.auth.load(); } }); ctx.auth.load(); ctx.sync.run(); window.addEventListener('online', () => ctx.sync.run()); }
 if ('serviceWorker' in navigator && import.meta.env.PROD) navigator.serviceWorker.register('./sw.js').catch(() => {});

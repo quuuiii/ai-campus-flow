@@ -26,15 +26,24 @@ on conflict (id) do nothing;
 -- 登入使用 Supabase Auth（建議學校信箱 magic link）。未登入者為 anon，可匿名回報（進入待審）。
 create table if not exists public.profiles (
   user_id      uuid primary key references auth.users(id) on delete cascade,
-  role         text not null default 'member' check (role in ('member','admin')),
+  -- reporter：新登入者，回報仍需審核；member：管理員確認過的組員，回報直接核可；admin：可審核與管理角色
+  role         text not null default 'reporter' check (role in ('reporter','member','admin')),
   display_name text check (char_length(display_name) <= 30),
   created_at   timestamptz not null default now()
 );
 alter table public.profiles enable row level security;
+-- 既有專案升級：放寬角色限制並把預設改為 reporter（已是 member/admin 的人不受影響）
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check check (role in ('reporter','member','admin'));
+alter table public.profiles alter column role set default 'reporter';
 
 create or replace function public.is_admin() returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (select 1 from public.profiles where user_id = auth.uid() and role = 'admin');
+$$;
+create or replace function public.is_member() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where user_id = auth.uid() and role in ('member','admin'));
 $$;
 
 drop policy if exists "read own profile" on public.profiles;
@@ -79,9 +88,9 @@ declare recent int;
 begin
   new.reporter := auth.uid();
   new.reviewed_by := null; new.reviewed_at := null;
-  -- 團隊成員（已登入）直接核可；匿名回報進入待審
-  new.status := case when auth.uid() is not null then 'approved' else 'pending' end;
-  if new.source = 'field_team' and auth.uid() is null then new.source := 'app'; end if;
+  -- 只有管理員確認過的組員（member/admin）直接核可；匿名與 reporter 進入待審
+  new.status := case when public.is_member() then 'approved' else 'pending' end;
+  if new.source = 'field_team' and not public.is_member() then new.source := 'app'; end if;
   if not exists (select 1 from public.places where id = new.place_id and active) then
     raise exception 'place not active';
   end if;
@@ -94,6 +103,20 @@ begin
 end $$;
 drop trigger if exists trg_obs_before_insert on public.crowd_observations;
 create trigger trg_obs_before_insert before insert on public.crowd_observations for each row execute function public.obs_before_insert();
+
+-- 審核時只能改 status；審核人與時間由伺服器填入，觀察內容不可被改動
+create or replace function public.obs_before_update() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if (new.client_id, new.observed_at, new.place_id, new.crowd_level, new.queue_minutes, new.method, new.source, new.note, new.reporter, new.device_hash, new.created_at)
+     is distinct from (old.client_id, old.observed_at, old.place_id, old.crowd_level, old.queue_minutes, old.method, old.source, old.note, old.reporter, old.device_hash, old.created_at)
+  then raise exception 'only status can be changed'; end if;
+  if new.status is distinct from old.status then new.reviewed_by := auth.uid(); new.reviewed_at := now();
+  else new.reviewed_by := old.reviewed_by; new.reviewed_at := old.reviewed_at; end if;
+  return new;
+end $$;
+drop trigger if exists trg_obs_before_update on public.crowd_observations;
+create trigger trg_obs_before_update before update on public.crowd_observations for each row execute function public.obs_before_update();
 
 -- RLS
 drop policy if exists "anyone can insert" on public.crowd_observations;
@@ -126,3 +149,10 @@ grant select on public.crowd_dashboard to anon, authenticated;
 create or replace view public.crowd_review_queue with (security_invoker = on) as
   select id, client_id, observed_at, place_id, crowd_level, queue_minutes, note, source, created_at
   from public.crowd_observations where status = 'pending' order by created_at;
+
+-- 管理員看成員清單（含 email，僅 admin 可讀；用於把組員從 reporter 升為 member）
+create or replace view public.member_list as
+  select p.user_id, u.email, p.role, p.created_at from public.profiles p join auth.users u on u.id = p.user_id
+  where public.is_admin();
+revoke all on public.member_list from anon;
+grant select on public.member_list to authenticated;
