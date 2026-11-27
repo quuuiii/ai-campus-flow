@@ -98,7 +98,8 @@ begin
   select count(*) into recent from public.crowd_observations
    where created_at > now() - interval '10 minutes'
      and ((new.device_hash is not null and device_hash = new.device_hash) or (new.reporter is not null and reporter = new.reporter));
-  if recent >= 5 then raise exception 'rate limit exceeded' using errcode = 'PT429'  -- PostgREST 會回 HTTP 429; end if;
+  -- 錯誤碼 PT429：PostgREST 會回 HTTP 429
+  if recent >= 5 then raise exception 'rate limit exceeded' using errcode = 'PT429'; end if;
   return new;
 end $$;
 drop trigger if exists trg_obs_before_insert on public.crowd_observations;

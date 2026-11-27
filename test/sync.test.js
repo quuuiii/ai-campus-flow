@@ -56,3 +56,10 @@ test('儀表板統計：總數、日期、星期×時段、缺資料地點', () 
   assert.ok(!d.rows.some((r) => r.place.id === 'self'));
   assert.equal(new Date(d.last).toISOString(), '2026-11-15T01:00:00.000Z');
 });
+test('環境變數容錯：去掉 /rest/v1/；支援 publishable key；拒絕 secret key', async () => {
+  const k = 'sb_publishable_' + 'a'.repeat(30);
+  assert.deepEqual(syncConfig({ VITE_SUPABASE_URL: ' https://cccyusebwmxjfvnmkkvs.supabase.co/rest/v1/ ', VITE_SUPABASE_ANON_KEY: k + ' ' }), { url: 'https://cccyusebwmxjfvnmkkvs.supabase.co', key: k });
+  assert.equal(syncConfig({ VITE_SUPABASE_URL: 'https://abc.supabase.co', VITE_SUPABASE_ANON_KEY: 'sb_secret_' + 'a'.repeat(30) }), null);
+  const s = mem(); enqueue(s, obs('h1'));
+  await flush({ url: 'https://abc.supabase.co', key: k }, s, async (u, o) => { assert.equal(o.headers.apikey, k); assert.ok(!('Authorization' in o.headers), '未登入不帶 Bearer'); return res(201); });
+});

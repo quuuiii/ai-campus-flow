@@ -3,7 +3,7 @@
 export const SESSION_KEY = 'campus-flow-session-v1';
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
 
-const hdr = (cfg, token) => ({ apikey: cfg.key, Authorization: `Bearer ${token || cfg.key}`, 'Content-Type': 'application/json' });
+const hdr = (cfg, token) => ({ apikey: cfg.key, ...(token ? { Authorization: `Bearer ${token}` } : {}), 'Content-Type': 'application/json' });
 export function loadSession(storage) {
   try { const s = JSON.parse(storage.getItem(SESSION_KEY) || 'null'); return s && typeof s.access_token === 'string' && typeof s.refresh_token === 'string' ? s : null; } catch { return null; }
 }

@@ -52,7 +52,7 @@
 3. **Authentication → Providers**：確認 Email 已開啟（magic link）。
    **Authentication → URL Configuration**：Site URL 填 `https://ai-campus-flow-qtg2.vercel.app`；Redirect URLs 加入同一網址，若要在 Vercel 預覽版測試再加 `https://*-quuuiiis-projects.vercel.app/**`（實際網域以 Vercel 預覽網址為準）。
    你先在網站「設定」頁用 email 登入一次，再到 Supabase **Table Editor → profiles** 把自己那列的 `role` 改成 `admin`（只有第一位管理員需要在後台改）。之後組員的角色可以直接在網站「設定 → 載入待審與成員」裡調整。
-4. **Project Settings → API**：複製 `Project URL` 與 `anon public` key（**不要**複製 `service_role`）。
+4. **Project Settings → API Keys**：複製 **Publishable key**（`sb_publishable_…`，新專案預設）；舊專案可在 **Legacy API Keys** 分頁複製 `anon`。**不要**複製 secret / service_role。Project URL 在 **Data API** 頁或首頁的 Connect，只要 `https://xxxx.supabase.co`，不要加 `/rest/v1/`。
 5. **Vercel → ai-campus-flow-qtg2 → Settings → Environment Variables** 新增：
    - `VITE_SUPABASE_URL` = 剛剛的 Project URL（形如 `https://xxxx.supabase.co`）
    - `VITE_SUPABASE_ANON_KEY` = anon public key
