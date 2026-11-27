@@ -58,9 +58,10 @@ function foodList(area) {
 
 function crowdPane(ctx) {
   const list = ctx.obs();
+  const dd = ctx.demo.days();
   const all = ctx.allObs(), dash = dashboardStats(all);
   const heat = (n) => (n === 0 ? '#f3f7f6' : `rgba(18,168,139,${(0.18 + 0.82 * (n / dash.max)).toFixed(2)})`);
-  const dashCard = `<section class="card"><div class="card-h"><h2>${ic('chart')}資料儀表板</h2><small>${ctx.sync.configured ? '本機＋團隊' : '僅本機'}</small></div>
+  const dashCard = `<section class="card"><div class="card-h"><h2>${ic('chart')}資料儀表板</h2><small>${ctx.sync.configured ? '本機＋團隊' : '僅本機'}${dd ? '＋示範' : ''}</small></div>${dd ? `<p class="note" style="margin:-4px 0 8px">含示範資料 ${all.filter((o) => o.demo).length} 筆（真實紀錄 ${all.length - all.filter((o) => o.demo).length} 筆）</p>` : ''}
     <div class="stat"><div><b>${dash.total}</b><small>總觀察筆數</small></div><div><b>${dash.readyForTraining}/${dash.rows.length}</b><small>達訓練門檻地點</small></div><div><b>${dash.last ? esc(fmtTW(dash.last.toISOString())).slice(5, 16) : '—'}</b><small>最近更新</small></div></div>
     <h3 style="margin:14px 0 6px;font-size:14px">各地點樣本（門檻：${MODEL_MIN} 筆、${MIN_DATES} 天）</h3>
     ${dash.rows.map((r) => `<div class="li"><div class="li-main"><b>${esc(r.place.short)}</b><small>${r.n} 筆 · ${r.dates} 天${r.last ? ' · 最近 ' + esc(fmtTW(r.last.toISOString())) : ''}</small><div class="meter" style="max-width:none;margin-top:6px" aria-hidden="true"><i style="width:${Math.min(100, (r.n / MODEL_MIN) * 100)}%"></i></div></div><i class="tag ${r.meetsMin ? 'ok' : r.n ? 'warn' : 'bad'}">${r.meetsMin ? '達門檻' : r.n ? `差 ${r.needN} 筆${r.needDates ? `、${r.needDates} 天` : ''}` : '無資料'}</i></div>`).join('')}
@@ -80,11 +81,14 @@ function crowdPane(ctx) {
   const sorted = [...list].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   const rep = modelReport(all);
   const ST = { insufficient: ['資料不足', 'tag'], 'not-better': ['未優於模擬', 'tag warn'], ready: ['模型可用', 'tag ok'] };
-  const modelCard = `<section class="card"><div class="card-h"><h2>${ic('target')}預測模型狀態</h2><i class="tag ${rep.mode === 'demo' ? 'warn' : 'ok'}">${rep.mode === 'demo' ? '示範模式' : rep.mode === 'partial' ? '部分地點可用' : '全部可用'}</i></div>
+  const demoCtl = `<div class="banner ${dd ? 'warn' : 'info'}" style="margin-bottom:10px">${ic('flask', 18)}<div style="flex:1"><b>示範資料集${dd ? `：已載入 ${dd} 天` : ''}</b><br>${dd ? '下方統計與模型包含<b>程式產生的示範資料</b>，不是任何人的真實觀察，也不會上傳。' : '展示用：載入程式產生的示範資料，觀察資料累積後模型如何從「資料不足」變成「可用」。'}
+      <div class="chips" role="group" aria-label="示範資料天數" style="margin:8px 0 0">${[[0, '關閉'], [1, '1 天'], [3, '3 天'], [5, '5 天']].map(([n, t]) => `<button data-demo="${n}" aria-pressed="${dd === n}">${t}</button>`).join('')}</div></div></div>`;
+  const modelCard = `<section class="card"><div class="card-h"><h2>${ic('target')}預測模型狀態</h2><i class="tag ${rep.mode === 'demo' ? 'warn' : 'ok'}">${rep.mode === 'demo' ? '示範模式' : rep.mode === 'partial' ? '部分地點可用' : '全部可用'}${dd && rep.mode !== 'demo' ? '（示範資料）' : ''}</i></div>
+    ${demoCtl}
     <div class="banner ${rep.mode === 'demo' ? 'warn' : 'info'}" style="margin-bottom:10px">${ic(rep.mode === 'demo' ? 'flask' : 'info', 18)}<div>${rep.mode === 'demo' ? '<b>示範模式：</b>目前沒有任何地點通過模型驗證，規劃頁的人潮數字是人工模擬值（或少量觀察的混合），<b>不是預測</b>。' : '通過驗證的地點才會標示「模型」；其餘仍為模擬／觀察混合。'}</div></div>
     <p class="note" style="margin-bottom:8px">模型：核平滑回歸（時間核寬 45 分鐘），向模擬值收縮。啟用條件：每地點 ≥ ${MODEL_MIN} 筆、≥ ${MIN_DATES} 個不同日期，且「留一日驗證」平均誤差（MAE，單位為百分點）≤ 模擬基準的 90% 並優於全體平均基準。觀察的 1–5 級以 10/30/50/70/90% 換算，為假設。</p>
-    ${rep.rows.map((r) => `<div class="li"><div class="li-main"><b>${esc(r.place.short)}</b><small>${r.n} 筆 · ${r.dates} 天${r.maeModel != null ? ` · MAE 模型 ${r.maeModel.toFixed(1)}／模擬 ${r.maeSim.toFixed(1)}／平均 ${r.maeMean.toFixed(1)}` : ''}</small><small>${esc(r.reason)}</small></div><i class="${ST[r.status][1]}">${ST[r.status][0]}</i></div>`).join('')}
-    <p class="note faint" style="margin-top:8px">尚未在真實資料上訓練或驗證；上表會隨你們累積的觀察紀錄自動更新。</p></section>`;
+    ${rep.rows.map((r) => `<div class="li"><div class="li-main"><b>${esc(r.place.short)}</b><small>${r.n} 筆 · ${r.dates} 天${r.maeModel != null ? ` · MAE 模型 ${r.maeModel.toFixed(1)}／模擬 ${r.maeSim.toFixed(1)}／平均 ${r.maeMean.toFixed(1)}` : ''}</small><small>${esc(r.reason)}</small></div><i class="${ST[r.status][1]}">${ST[r.status][0]}${dd && r.n ? '（示範）' : ''}</i></div>`).join('')}
+    <p class="note faint" style="margin-top:8px">${dd ? '目前結果來自示範資料，只用於說明機制，不代表真實預測準確度。' : '尚未在真實資料上訓練或驗證；上表會隨你們累積的觀察紀錄自動更新。'}</p></section>`;
   return `<div class="stack">
   <div class="banner info">${ic('info', 18)}<div><b>資料來源說明：</b>每個地點累積 ≥ ${MIN_SAMPLES} 筆觀察後，才會與模擬值混合納入預測；不足時一律標示「模擬」，不會假裝成即時預測。</div></div>
   <div class="grid2" style="align-items:start">
@@ -161,6 +165,7 @@ function bindCrowd(ctx) {
     if (!confirm('刪除這筆觀察紀錄？')) return;
     ctx.setObs(deleteObservation(ctx.obs(), b.dataset.delobs)); ctx.rerender(); ctx.toast('已刪除', 'ok');
   }));
+  document.querySelectorAll('[data-demo]').forEach((b) => (b.onclick = () => ctx.demo.set(+b.dataset.demo)));
   const sn = $('#syncNow'); if (sn) sn.onclick = () => ctx.sync.run();
   const sr = $('#syncRetry'); if (sr) sr.onclick = () => ctx.sync.retry();
   const exp = $('#expObs');

@@ -31,6 +31,8 @@ async def main():
         ok('下載團隊資料並併入儀表板（本機1＋團隊1）', '本機＋團隊' in m and await pg.locator('.stat b').first.inner_text() == '2')
         await pg.click('#syncNow'); await pg.wait_for_timeout(500)
         ok('重複同步不重複上傳', server['posts'] == 1 and len(server['rows']) == 1)
+        await pg.click('[data-demo="5"]'); await pg.wait_for_timeout(300); await pg.click('#syncNow'); await pg.wait_for_timeout(500)
+        ok('示範資料不會上傳', server['posts'] == 1 and not any(k.startswith('demo-') for k in server['rows']))
         ok('我的紀錄清單只有本機 1 筆', await pg.locator('[data-delobs]').count() == 1)
         ok('無 JS 錯誤', not errs, errs)
         await b.close()

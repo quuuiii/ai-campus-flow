@@ -10,9 +10,10 @@ import { taskState, demoState, sanitizeTask } from '../store.js';
 const MODES = [['crowd', 'leaf', '避開人潮'], ['walk', 'walk', '最短步行'], ['focus', 'target', '專注效率']];
 const OVERLOAD = '再幫我加一場兩小時的小組討論';
 const HOUR = (m) => fmt(m);
+let demoOn = false; // 是否載入示範資料集（只影響標籤）
 
 export const planCtx = (ctx) => ({ courses: ctx.state.courses, ...ctx.state.plan, crowd: defaultCrowdFn(ctx.allObs(), ctx.state.plan.day) });
-export const srcTag = (s) => `<i class="tag src-${s}">${SOURCE_LABEL[s] || '模擬'}</i>`;
+export const srcTag = (s, demo = false) => `<i class="tag src-${s}">${SOURCE_LABEL[s] || '模擬'}${demo && (s === 'observed' || s === 'model') ? '·示範資料' : ''}</i>`;
 const crowdCls = (p) => (p >= 80 ? 'hi' : p >= 60 ? 'mid' : '');
 
 export function mapsUrl(fromId, toId) {
@@ -23,6 +24,7 @@ export function mapsUrl(fromId, toId) {
 export function renderPlan(ctx) {
   const { state } = ctx, pl = state.plan;
   const plan = buildPlan(planCtx(ctx));
+  demoOn = ctx.demo.days() > 0;
   const dayCourses = state.courses.filter((c) => +c.day === +pl.day).sort((a, b) => toMin(a.start) - toMin(b.start));
   const days = [...new Set([...state.courses.map((c) => +c.day), +pl.day])].sort();
   const doneN = plan.items.filter((i) => pl.done[i.task.id]).length;
@@ -70,6 +72,7 @@ export function renderPlan(ctx) {
   const deferred = pl.deferred.map((id) => pl.tasks.find((t) => t.id === id)).filter(Boolean).map((t) => `<article class="tcard defer"><div class="th"><span class="tk">${ic(KINDS[t.kind].icon, 16)}${KINDS[t.kind].label}</span><span class="tag">已延後</span></div><p class="why1">今天空堂不足，建議挪到晚上或明天。</p></article>`).join('');
 
   return `<div class="page-head"><span class="eyebrow">Planner</span><h1>智慧行程規劃</h1></div>
+  ${demoOn ? `<div class="banner warn" style="margin-bottom:12px">${ic('flask', 18)}<div><b>示範資料模式：</b>人潮數字包含程式產生的示範資料，不是真實觀察。可在「探索 → 人潮觀察」關閉。</div></div>` : ''}
   <div class="plan">${panel}<section class="results">${status}
     <div class="tl-head"><h2>週${DAYS[pl.day]} 時間軸</h2><details class="prov"><summary>${ic('info', 16)}數字皆為模擬／預估</summary><p>${esc(PROVENANCE)}</p><p>步行分鐘為人工預估，請以實際走路為準。松苑、第九餐廳暫停營業，已移除。</p></details></div>
     ${pl.tasks.length ? blocks.map((b) => b.html).join('') + unsched + deferred : '<div class="card empty">還沒有可解析的任務，請在左側輸入需求。</div>'}
@@ -93,7 +96,7 @@ function taskCard(it, pl) {
   const stay = it.from === it.place.id;
   const route = `${stay ? '' : esc(it.from ? placeShort(it.from) : '目前位置') + ` <i>→ 步行約${it.walkIn}分 →</i> `}<b>${esc(it.place.short)}</b>${stay ? ' <i>（不用移動）</i>' : ''}${it.isLast && it.slot.hasNext ? ` <i>→ 步行約${it.walkOut}分 →</i> ${esc(BUILDINGS[it.slot.next] || '下一堂課')}` : ''}`;
   const alts = it.alts.filter((a) => !a.picked);
-  const tags = [srcTag(it.src.source)];
+  const tags = [srcTag(it.src.source, demoOn)];
   if (it.place.unverified) tags.push('<i class="tag warn">地點待確認</i>');
   if (it.shrunk > 0) tags.push(`<i class="tag warn">彈性縮短 ${it.shrunk} 分</i>`);
   if (it.slack != null && it.slack < 8) tags.push(`<i class="tag warn">緩衝僅 ${Math.max(it.slack, 0)} 分</i>`);
