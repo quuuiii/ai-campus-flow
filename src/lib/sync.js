@@ -1,11 +1,16 @@
 // 觀察紀錄同步（Supabase REST，無 SDK）。未設定環境變數時完全不連線，App 照常以本機資料運作。
 // 離線或失敗時留在本機「待上傳佇列」，下次再送；以 client_id 去重，重送不會產生重複資料。
+// 只在有使用者登入 token 時才帶 Authorization；未登入只帶 apikey（publishable key 不是 JWT，不能放在 Bearer）
+export const authHeaders = (cfg, token) => (token ? { apikey: cfg.key, Authorization: `Bearer ${token}` } : { apikey: cfg.key });
 export const OUTBOX_KEY = 'campus-flow-outbox-v1';
 export const REMOTE_KEY = 'campus-flow-remote-obs-v1';
 
 export function syncConfig(env = {}) {
-  const url = String(env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
-  const key = String(env.VITE_SUPABASE_ANON_KEY || '');
+  // 容錯：去掉前後空白、結尾斜線與誤貼的 /rest/v1
+  const url = String(env.VITE_SUPABASE_URL || '').trim().replace(/\/+$/, '').replace(/\/(rest|auth)\/v1$/, '').replace(/\/+$/, '');
+  // 新版 publishable key（sb_publishable_…）或舊版 anon key（eyJ… JWT）皆可；拒絕 secret/service_role
+  const key = String(env.VITE_SUPABASE_ANON_KEY || '').trim();
+  if (/^sb_secret_/.test(key)) return null;
   if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(url) || key.length < 20) return null;
   return { url, key };
 }
@@ -48,7 +53,7 @@ export async function flush(cfg, storage, fetchImpl = globalThis.fetch, token = 
     try {
       const res = await fetchImpl(`${cfg.url}/rest/v1/crowd_observations?on_conflict=client_id`, {
         method: 'POST',
-        headers: { apikey: cfg.key, Authorization: `Bearer ${token || cfg.key}`, 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal' },
+        headers: { ...authHeaders(cfg, token), 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal' },
         body: JSON.stringify(toRow(item.obs, device)),
       });
       if (res.ok) { item.status = 'sent'; sent++; continue; }
@@ -70,7 +75,7 @@ export function retryFailed(storage) {
 export async function pull(cfg, storage, fetchImpl = globalThis.fetch, token = null) {
   if (!cfg) return { ok: false, error: '未設定' };
   try {
-    const res = await fetchImpl(`${cfg.url}/rest/v1/crowd_observations_public?select=*&order=observed_at.desc&limit=5000`, { headers: { apikey: cfg.key, Authorization: `Bearer ${token || cfg.key}` } });
+    const res = await fetchImpl(`${cfg.url}/rest/v1/crowd_observations_public?select=*&order=observed_at.desc&limit=5000`, { headers: authHeaders(cfg, token) });
     if (!res.ok) return { ok: false, error: `下載失敗（${res.status}）` };
     const rows = await res.json();
     if (!Array.isArray(rows)) return { ok: false, error: '回應格式錯誤' };
