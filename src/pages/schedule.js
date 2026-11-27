@@ -58,7 +58,8 @@ export function renderSchedule(ctx) {
     </form></section>
   <section class="card"><div class="card-h"><h2>${ic('calendar')}課表 <small>${courses.length} 堂</small></h2>
     <div class="chips" style="margin:0"><button data-view="week" aria-pressed="${view.mode === 'week'}">週視圖</button><button data-view="list" aria-pressed="${view.mode === 'list'}">清單</button></div></div>
-    ${view.mode === 'week' ? weekGrid(courses) + '<p class="note faint" style="margin-top:8px">格式同選課系統 A4 課表。點空白格＝新增（可選結束節次連堂）；點課程＝編輯或刪除。紅框＝時間重疊。</p>' : listView(courses)}</section></div>`;
+    ${view.mode === 'week' ? weekGrid(courses) + '<p class="note faint" style="margin-top:8px">格式同選課系統 A4 課表。點空白格＝新增（可選結束節次連堂）；點課程＝編輯或刪除。紅框＝時間重疊。</p>' : listView(courses)}
+    ${courses.length ? `<div class="row end" style="margin-top:12px"><button class="btn sm danger" id="clearAllCourses">${ic('trash', 16)}清除全部課表</button></div>` : ''}</section></div>`;
 }
 
 export function bindSchedule(ctx) {
@@ -86,6 +87,14 @@ export function bindSchedule(ctx) {
   };
   pS.onchange = fromP; pE.onchange = fromP;
   fs.addEventListener('change', syncP); fe.addEventListener('change', syncP); syncP();
+  const clr = $('#clearAllCourses');
+  if (clr) clr.onclick = () => {
+    const n = state.courses.length;
+    if (!confirm(`確定要清除全部 ${n} 堂課嗎？此動作無法復原。\n（規劃中的任務與人潮觀察紀錄不受影響）`)) return;
+    state.courses = []; state.demo = false;
+    Object.assign(state.plan, { overrides: {}, scale: {}, deferred: [] });
+    view.editId = null; view.prefill = null; ctx.save(); ctx.rerender(); ctx.toast('已清除全部課表', 'ok');
+  };
   const cancel = $('#cancelEdit'); if (cancel) cancel.onclick = () => { view.editId = null; view.prefill = null; ctx.rerender(); };
   $('#courseForm').onsubmit = (e) => {
     e.preventDefault();
