@@ -69,7 +69,7 @@ export function renderPlan(ctx) {
   const unsched = plan.unscheduled.map(({ task: t, reason }) => `<article class="tcard bad"><div class="th"><span class="tk">${ic(KINDS[t.kind].icon, 16)}${KINDS[t.kind].label}</span><span class="tag bad">未排入</span></div><p class="why1">需 ${t.dur} 分鐘${t.deadline != null ? `，${fmt(t.deadline)} 前完成` : ''}。${esc(reason)}</p></article>`).join('');
   const deferred = pl.deferred.map((id) => pl.tasks.find((t) => t.id === id)).filter(Boolean).map((t) => `<article class="tcard defer"><div class="th"><span class="tk">${ic(KINDS[t.kind].icon, 16)}${KINDS[t.kind].label}</span><span class="tag">已延後</span></div><p class="why1">今天空堂不足，建議挪到晚上或明天。</p></article>`).join('');
 
-  return `<div class="page-head"><span class="eyebrow">Planner</span><h1>智慧行程規劃</h1><p>依課表空堂、人潮與步行距離排出你的一天，並說明每個決定。</p></div>
+  return `<div class="page-head"><span class="eyebrow">Planner</span><h1>智慧行程規劃</h1></div>
   <div class="plan">${panel}<section class="results">${status}
     <div class="tl-head"><h2>週${DAYS[pl.day]} 時間軸</h2><details class="prov"><summary>${ic('info', 16)}數字皆為模擬／預估</summary><p>${esc(PROVENANCE)}</p><p>步行分鐘為人工預估，請以實際走路為準。松苑、第九餐廳暫停營業，已移除。</p></details></div>
     ${pl.tasks.length ? blocks.map((b) => b.html).join('') + unsched + deferred : '<div class="card empty">還沒有可解析的任務，請在左側輸入需求。</div>'}
