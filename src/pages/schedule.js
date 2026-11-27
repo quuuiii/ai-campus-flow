@@ -42,7 +42,7 @@ function listView(courses) {
 export function renderSchedule(ctx) {
   const courses = sortCourses(ctx.state.courses), ed = courses.find((c) => c.id === view.editId) || null;
   const pf = view.prefill, v = ed || { day: pf?.day ?? (new Date().getDay() || 1), start: pf?.start ?? '09:00', end: pf?.end ?? '09:50', name: '', building: '', color: courses.length % 6 };
-  return `<div class="page-head"><span class="eyebrow">Schedule</span><h1>我的課表</h1><p>規劃器會自動避開上課時間；課程只存在這台裝置。</p></div>
+  return `<div class="page-head"><span class="eyebrow">Schedule</span><h1>我的課表</h1></div>
   <div class="grid2" style="align-items:start">
   <section class="card"><div class="card-h"><h2>${ic(ed ? 'edit' : 'plus')}${ed ? '編輯課程' : '新增課程'}</h2></div>
     <form id="courseForm" novalidate>

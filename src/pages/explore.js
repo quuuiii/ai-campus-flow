@@ -20,7 +20,7 @@ export function renderExplore(ctx) {
   const tab = ctx.state.ui.exploreTab;
   const tabs = `<div class="tabs" role="tablist" aria-label="探索分類">${TABS.map(([id, icon, t]) => `<button role="tab" id="tab-${id}" aria-selected="${tab === id}" aria-controls="pane" data-etab="${id}">${ic(icon, 16)}${t}</button>`).join('')}</div>`;
   const body = tab === 'places' ? placesPane() : tab === 'crowd' ? crowdPane(ctx) : foodPane(tab === 'back' ? '後門' : '宵夜街');
-  return `<div class="page-head"><span class="eyebrow">Explore NCU</span><h1>探索中央大學</h1><p>校園地點、後門與宵夜街美食，以及人潮觀察紀錄。</p></div>${tabs}<div id="pane" role="tabpanel" aria-labelledby="tab-${tab}">${body}</div>`;
+  return `<div class="page-head"><span class="eyebrow">Explore NCU</span><h1>探索中央大學</h1></div>${tabs}<div id="pane" role="tabpanel" aria-labelledby="tab-${tab}">${body}</div>`;
 }
 
 function placesPane() {
