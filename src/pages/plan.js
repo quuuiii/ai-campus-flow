@@ -108,7 +108,7 @@ function taskCard(it, pl) {
     <div class="row">
       <button class="btn sm ${done ? 'primary' : ''}" data-done="${t.id}" aria-pressed="${done}">${ic(done ? 'done' : 'square', 16)}${done ? '已完成' : '完成'}</button>
       ${alts.length ? `<button class="btn sm" data-alt="${t.id}">${ic('refresh', 16)}換地點</button>` : ''}
-      ${it.place.nodata ? '' : `<a class="btn sm outline" href="${mapsUrl(it.from, it.place.id)}" target="_blank" rel="noopener noreferrer">${ic('nav', 16)}步行導航</a>`}
+      ${it.place.id === 'self' ? '' : `<a class="btn sm outline" href="${mapsUrl(it.from, it.place.id)}" target="_blank" rel="noopener noreferrer">${ic('nav', 16)}步行導航</a>`}
     </div>
     <details class="more"><summary>${ic('info', 16)}理由、其他地點、順序</summary>
       ${rest.length ? `<ul class="why">${rest.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}

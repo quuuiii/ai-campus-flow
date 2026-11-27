@@ -19,8 +19,12 @@ insert into public.places (id, name, category) values
   ('nightmarket', '宵夜街（外帶）',       'meal'),
   ('mainlib',     '總圖書館 閱覽區',      'study'),
   ('zhongzheng',  '中正圖書館 K書中心',   'study'),
-  ('admin',       '行政大樓',            'errand')
+  ('admin',       '行政大樓',            'errand'),
+  ('pinecone',    '松果餐廳',            'meal'),
+  ('male9_711',   '男九 7-11',           'meal')
 on conflict (id) do nothing;
+-- 行政大樓不再蒐集人潮（保留歷史資料，不刪除）
+update public.places set active = false where id = 'admin';
 
 -- ───────────────────────── 2. 使用者與角色 ─────────────────────────
 -- 登入使用 Supabase Auth（建議學校信箱 magic link）。未登入者為 anon，可匿名回報（進入待審）。

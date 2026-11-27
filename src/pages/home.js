@@ -3,7 +3,7 @@ import { DAYS, esc, fmt, toMin, nowTW } from '../util.js';
 import { ic } from '../icons.js';
 import { BUILDINGS, PLACES } from '../data/places.js';
 import { computeSlots } from '../engine/scheduler.js';
-import { predictCrowd, bestTime, levelOf, approx, modelReport, SOURCE_LABEL } from '../engine/crowd.js';
+import { predictCrowd, bestTime, levelOf, approx, modelReport, isClosed, SOURCE_LABEL } from '../engine/crowd.js';
 
 export function renderHome(ctx) {
   const { state } = ctx, now = nowTW(), obs = ctx.allObs();
@@ -16,9 +16,9 @@ export function renderHome(ctx) {
   const dateStr = new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
   const left = next ? toMin(next.start) - now.minute : null;
   const cd = left == null ? '' : left >= 60 ? `${Math.floor(left / 60)} 小時 ${left % 60} 分` : `${left} 分鐘`;
-  const crowdPlaces = [PLACES.backdoor, PLACES.female14, PLACES.mainlib, PLACES.zhongzheng];
+  const crowdPlaces = [PLACES.backdoor, PLACES.pinecone, PLACES.male9_711, PLACES.female14, PLACES.mainlib, PLACES.zhongzheng].filter((p) => p && !isClosed(p, now.day));
   const rows = crowdPlaces.map((p) => {
-    const r = predictCrowd(p, now.minute, obs, now.day), study = p.vac != null, pct = approx(study ? 100 - r.pct : r.pct);
+    const r = predictCrowd(p, now.minute, obs, now.day), study = !!p.study, pct = approx(study ? 100 - r.pct : r.pct);
     return `<div class="crowd-row"><div class="li-main"><b>${esc(p.short)}</b><small>${study ? '空位' : '人潮'} ${pct}%${study ? '' : '（' + levelOf(r.pct) + '）'}</small></div><div class="meter" aria-hidden="true"><i class="${study ? '' : r.pct >= 70 ? 'hi' : r.pct >= 40 ? 'mid' : ''}" style="width:${pct}%"></i></div><i class="tag src-${r.source}">${SOURCE_LABEL[r.source]}${ctx.demo.days() && r.source !== 'simulated' ? '·示範' : ''}</i></div>`;
   }).join('');
 

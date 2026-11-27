@@ -19,6 +19,7 @@ let observations = loadObservations().list;
 const syncCfg = syncConfig(import.meta.env);
 const DEMO_KEY = 'campus-flow-demo-days';
 let demoDays = (() => { try { const v = +localStorage.getItem(DEMO_KEY); return [1, 3, 5].includes(v) ? v : 0; } catch { return 0; } })();
+let demoScenario = (() => { try { return localStorage.getItem('campus-flow-demo-scenario') === 'diff' ? 'diff' : 'same'; } catch { return 'same'; } })();
 let merged = null; // 本機＋團隊資料，快取到資料變動為止（模型評估以陣列為快取鍵）
 const syncState = { lastPull: null, lastError: '', busy: false };
 // 登入連結回來：從網址 hash 取出 token 後立刻清除網址，避免 token 留在瀏覽紀錄
@@ -44,10 +45,12 @@ const ctx = {
   obs: () => observations,
   setObs: (l) => { observations = l; merged = null; return saveObservations(l); },
   // 預測、模型、儀表板用：本機紀錄＋團隊已核可資料（未設定同步時只有本機）
-  allObs: () => (merged ??= [...(syncCfg ? mergeObs(observations, remoteObs(localStorage)) : observations), ...generateDemoObs(demoDays)]),
+  allObs: () => (merged ??= [...(syncCfg ? mergeObs(observations, remoteObs(localStorage)) : observations), ...generateDemoObs(demoDays, new Date(), demoScenario)]),
   // 示範資料集（只在本機產生，不上傳、不存進觀察紀錄）
   demo: {
     days: () => demoDays,
+    scenario: () => demoScenario,
+    setScenario: (s) => { demoScenario = s === 'diff' ? 'diff' : 'same'; try { localStorage.setItem('campus-flow-demo-scenario', demoScenario); } catch { /* 忽略 */ } merged = null; render(true); },
     set: (n) => { demoDays = [1, 3, 5].includes(n) ? n : 0; try { localStorage.setItem(DEMO_KEY, String(demoDays)); } catch { /* 忽略 */ } merged = null; render(true); },
   },
   auth: {

@@ -8,6 +8,7 @@ import { addObservation, deleteObservation, obsToCSV, importObservationsCSV } fr
 import { sufficiency, obsPlaceId, MIN_SAMPLES, modelReport } from '../engine/crowd.js';
 import { MIN_SAMPLES as MODEL_MIN, MIN_DATES } from '../engine/model.js';
 import { dashboardStats, BANDS, DAY_ORDER } from '../engine/stats.js';
+import { DEMO_SCENARIOS } from '../data/demoObs.js';
 
 const TABS = [['places', 'map', '校園地點'], ['back', 'meal', '後門美食'], ['night', 'coffee', '宵夜街美食'], ['crowd', 'eye', '人潮觀察']];
 const q = { place: '', cat: '全部', food: '', fcat: '全部', sel: '' };
@@ -80,13 +81,14 @@ function crowdPane(ctx) {
     : '<p class="note">尚未連接團隊資料庫，紀錄只存在這支手機。設定方式見專案的 docs/supabase-plan.md（需要建立 Supabase 帳號並設定 Vercel 環境變數）。</p>'}</section>`;
   const sorted = [...list].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   const rep = modelReport(all);
-  const ST = { insufficient: ['資料不足', 'tag'], 'not-better': ['未優於模擬', 'tag warn'], ready: ['模型可用', 'tag ok'] };
-  const demoCtl = `<div class="banner ${dd ? 'warn' : 'info'}" style="margin-bottom:10px">${ic('flask', 18)}<div style="flex:1"><b>示範資料集${dd ? `：已載入 ${dd} 天` : ''}</b><br>${dd ? '下方統計與模型包含<b>程式產生的示範資料</b>，不是任何人的真實觀察，也不會上傳。' : '展示用：載入程式產生的示範資料，觀察資料累積後模型如何從「資料不足」變成「可用」。'}
-      <div class="chips" role="group" aria-label="示範資料天數" style="margin:8px 0 0">${[[0, '關閉'], [1, '1 天'], [3, '3 天'], [5, '5 天']].map(([n, t]) => `<button data-demo="${n}" aria-pressed="${dd === n}">${t}</button>`).join('')}</div></div></div>`;
+  const ST = { insufficient: ['資料不足', 'tag'], 'not-better': ['未優於經驗', 'tag warn'], ready: ['模型可用', 'tag ok'] };
+  const demoCtl = `<div class="banner ${dd ? 'warn' : 'info'}" style="margin-bottom:10px">${ic('flask', 18)}<div style="flex:1"><b>示範資料集${dd ? `：已載入 ${dd} 天` : ''}</b><br>${dd ? `下方統計與模型包含<b>依團隊經驗產生的示範資料</b>（情境：${esc(DEMO_SCENARIOS[ctx.demo.scenario()])}），不是任何人的真實觀察，也不會上傳。` : '展示用：依團隊經驗產生示範資料，看資料累積後模型如何判斷「資料不足／未優於經驗／可用」。'}
+      <div class="chips" role="group" aria-label="示範資料天數" style="margin:8px 0 0">${[[0, '關閉'], [1, '1 天'], [3, '3 天'], [5, '5 天']].map(([n, t]) => `<button data-demo="${n}" aria-pressed="${dd === n}">${t}</button>`).join('')}</div>
+      ${dd ? `<div class="chips" role="group" aria-label="示範情境" style="margin:8px 0 0">${Object.entries(DEMO_SCENARIOS).map(([k, t]) => `<button data-scn="${k}" aria-pressed="${ctx.demo.scenario() === k}">${t}</button>`).join('')}</div>` : ''}</div></div>`;
   const modelCard = `<section class="card"><div class="card-h"><h2>${ic('target')}預測模型狀態</h2><i class="tag ${rep.mode === 'demo' ? 'warn' : 'ok'}">${rep.mode === 'demo' ? '示範模式' : rep.mode === 'partial' ? '部分地點可用' : '全部可用'}${dd && rep.mode !== 'demo' ? '（示範資料）' : ''}</i></div>
     ${demoCtl}
     <div class="banner ${rep.mode === 'demo' ? 'warn' : 'info'}" style="margin-bottom:10px">${ic(rep.mode === 'demo' ? 'flask' : 'info', 18)}<div>${rep.mode === 'demo' ? '<b>示範模式：</b>目前沒有任何地點通過模型驗證，規劃頁的人潮數字是人工模擬值（或少量觀察的混合），<b>不是預測</b>。' : '通過驗證的地點才會標示「模型」；其餘仍為模擬／觀察混合。'}</div></div>
-    <p class="note" style="margin-bottom:8px">模型：核平滑回歸（時間核寬 45 分鐘），向模擬值收縮。啟用條件：每地點 ≥ ${MODEL_MIN} 筆、≥ ${MIN_DATES} 個不同日期，且「留一日驗證」平均誤差（MAE，單位為百分點）≤ 模擬基準的 90% 並優於全體平均基準。觀察的 1–5 級以 10/30/50/70/90% 換算，為假設。</p>
+    <p class="note" style="margin-bottom:8px">模型：以團隊經驗（模擬值）為基準，用核平滑回歸（時間核寬 30 分鐘）學習觀察與經驗的差距；資料少時貼近經驗。啟用條件：每地點 ≥ ${MODEL_MIN} 筆、≥ ${MIN_DATES} 個不同日期，且「留一日驗證」平均誤差（MAE，單位為百分點）≤ 模擬基準的 90% 並優於全體平均基準。觀察的 1–5 級以 10/30/50/70/90% 換算，為假設。</p>
     ${rep.rows.map((r) => `<div class="li"><div class="li-main"><b>${esc(r.place.short)}</b><small>${r.n} 筆 · ${r.dates} 天${r.maeModel != null ? ` · MAE 模型 ${r.maeModel.toFixed(1)}／模擬 ${r.maeSim.toFixed(1)}／平均 ${r.maeMean.toFixed(1)}` : ''}</small><small>${esc(r.reason)}</small></div><i class="${ST[r.status][1]}">${ST[r.status][0]}${dd && r.n ? '（示範）' : ''}</i></div>`).join('')}
     <p class="note faint" style="margin-top:8px">${dd ? '目前結果來自示範資料，只用於說明機制，不代表真實預測準確度。' : '尚未在真實資料上訓練或驗證；上表會隨你們累積的觀察紀錄自動更新。'}</p></section>`;
   return `<div class="stack">
@@ -166,6 +168,7 @@ function bindCrowd(ctx) {
     ctx.setObs(deleteObservation(ctx.obs(), b.dataset.delobs)); ctx.rerender(); ctx.toast('已刪除', 'ok');
   }));
   document.querySelectorAll('[data-demo]').forEach((b) => (b.onclick = () => ctx.demo.set(+b.dataset.demo)));
+  document.querySelectorAll('[data-scn]').forEach((b) => (b.onclick = () => ctx.demo.setScenario(b.dataset.scn)));
   const sn = $('#syncNow'); if (sn) sn.onclick = () => ctx.sync.run();
   const sr = $('#syncRetry'); if (sr) sr.onclick = () => ctx.sync.retry();
   const exp = $('#expObs');

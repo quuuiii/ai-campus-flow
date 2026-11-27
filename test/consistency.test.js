@@ -30,14 +30,15 @@ test(`一致性：${scenarios.length} 種情境（時間/步行/排隊/緩衝/�
       if (it.slot.hasNext) assert.equal(it.walkOut, walk(it.place.id, it.slot.next), `walkOut 不符 ${tag}`);
       // 開始時間 ≥ 抵達時間 + 排隊
       assert.ok(it.start >= it.arrive + it.queue, `開始早於抵達+排隊 ${tag}`);
-      assert.equal(it.queue, queueMin(it.pct), `排隊與人潮不符 ${tag}`);
+      assert.equal(it.queue, ['meal', 'errand'].includes(it.task.kind) ? queueMin(it.pct, it.place) : 0, `排隊與人潮不符 ${tag}`);
       assert.ok(it.queue === 0 || it.queue % 5 === 0, '排隊分鐘應為 5 的倍數');
       // 緩衝
       if (it.slack != null) assert.equal(it.slack, it.slot.e - (it.end + it.walkOut) - ctx.buffer, `緩衝計算不符 ${tag}`);
       walkSum += it.walkIn + (it.isLast && it.slot.hasNext ? it.walkOut : 0);
       // 理由中的數字必須等於卡片資料
       const text1 = explain(it).join('\n');
-      if (it.place.nodata) { assert.match(text1, /沒有這裡的人潮與步行資料/); assert.equal(it.walkIn, 0); }
+      if (it.place.id === 'self') { assert.match(text1, /沒有這裡的人潮與步行資料/); assert.equal(it.walkIn, 0); }
+      else if (it.place.nodata) { assert.match(text1, /沒有這裡的人潮資料/); assert.ok(text1.includes(`步行約 ${it.walkIn} 分`)); }
       else {
         if (it.task.kind === 'meal' || it.task.kind === 'errand') assert.ok(text1.includes(`人潮約 ${approx(it.pct)}%`), `理由人潮不符 ${tag}`);
         else assert.ok(text1.includes(`空位率約 ${approx(100 - it.pct)}%`), `理由空位不符 ${tag}`);
