@@ -17,7 +17,7 @@ async def main():
             pg = await ctx.new_page(); errs = []
             pg.on('pageerror', lambda e: errs.append(str(e)))
             pg.on('console', lambda m: errs.append(m.text) if m.type == 'error' and 'Failed to load resource' not in m.text and 'ERR_' not in m.text else None)
-            pg.on('dialog', lambda d: asyncio.ensure_future(d.accept()))
+            pg._dlg = lambda d: asyncio.ensure_future(d.accept()); pg.on('dialog', pg._dlg)
             await pg.goto(URL); await pg.wait_for_selector('.tabbar')
             w = (await pg.evaluate('innerWidth'))
             for t in ['home', 'plan', 'schedule', 'explore', 'settings']:
@@ -114,4 +114,14 @@ async def run_flows(pg, ctx, errs):
     await pg.click('[data-tab=settings]'); await pg.click('#clrObs'); await pg.wait_for_timeout(150)
     await pg.click('[data-tab=schedule]'); await pg.click('[data-view=week]'); ok('清除觀察不影響課表', await pg.locator('.pc.has').count() > 0)
     await pg.click('[data-tab=explore]'); await pg.click('#tab-crowd'); ok('清除觀察後紀錄為 0', await pg.locator('[data-delobs]').count() == 0)
+    # 課表頁：清除全部課表（先取消、再確認）
+    pg.remove_listener('dialog', pg._dlg) if hasattr(pg, '_dlg') else None
+    await pg.click('[data-tab=schedule]'); n0 = await pg.locator('.pc.has').count()
+    pg.once('dialog', lambda d: asyncio.ensure_future(d.dismiss()))
+    await pg.click('#clearAllCourses'); await pg.wait_for_timeout(200)
+    ok('清除課表：按取消不會刪', await pg.locator('.pc.has').count() == n0 and n0 > 0)
+    pg.once('dialog', lambda d: asyncio.ensure_future(d.accept()))
+    await pg.click('#clearAllCourses'); await pg.wait_for_timeout(200)
+    ok('清除課表：確認後全部清空、按鈕消失', await pg.locator('.pc.has').count() == 0 and await pg.locator('#clearAllCourses').count() == 0)
+    await pg.click('[data-tab=explore]'); await pg.click('#tab-crowd')
 asyncio.run(main())
