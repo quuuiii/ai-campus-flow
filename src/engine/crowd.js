@@ -1,6 +1,6 @@
 // 人潮估計。資料來源分三類，介面上必須清楚區分：
 //   observed  真實觀察：由團隊現場觀察紀錄推得
-//   simulated 人工模擬：團隊設定的示範參數（基準值＋下課尖峰規則），未使用任何 Wi-Fi、選課或人流感測資料
+//   simulated 人工模擬：依團隊成員使用經驗設定的時段等級（data/places.js），非實測；未使用任何 Wi-Fi、選課或人流感測資料
 //   model     模型預測：統計模型（engine/model.js），只有在某地點通過留一日驗證後才回傳
 import { PLACES } from '../data/places.js';
 import { nowTW, isoTW } from '../util.js';
@@ -11,14 +11,32 @@ export const MIN_SAMPLES = 3;      // 少於此筆數不使用觀察資料
 export const FULL_WEIGHT_AT = 8;   // 達此筆數才完全採用觀察資料；之間與模擬值混合
 const OBS_PCT = { 1: 10, 2: 30, 3: 50, 4: 70, 5: 90 };
 
-// 下課尖峰係數：11:30 起升高，12:00–12:30 最高，之後緩降
-const lunchPeak = (t) =>
-  t < 690 ? 0.25 : t < 720 ? 0.25 + (0.75 * (t - 690)) / 30 : t < 750 ? 1 : t < 810 ? 1 - (0.7 * (t - 750)) / 60 : 0.3;
-
-export const vacancy = (p, t) => Math.max(10, Math.round(p.vac - 3 * Math.max(0, t / 60 - 15)));
-export const simulate = (p, t) => (p.vac != null ? 100 - vacancy(p, t) : Math.round(p.base + p.peak * lunchPeak(t)));
-// 排隊分鐘：由模擬/觀察人潮推得的粗估（公式為人工設定，未經實測校準），取 5 分鐘為單位避免看似精確
-export const queueMin = (pct) => (pct >= 70 ? Math.max(5, Math.round(((pct - 68) * 0.75) / 5) * 5) : 0);
+// 依團隊經驗折線計算等級，再轉成百分比（1→10%、2→30%、3→50%、4→70%、5→90%）
+const lerp = (knots, t) => {
+  if (t <= knots[0][0]) return knots[0][1];
+  for (let i = 1; i < knots.length; i++) if (t <= knots[i][0]) { const [t0, v0] = knots[i - 1], [t1, v1] = knots[i]; return v0 + ((v1 - v0) * (t - t0)) / (t1 - t0); }
+  return knots[knots.length - 1][1];
+};
+export const levelToPct = (lv) => Math.round((Math.max(1, Math.min(5, lv)) - 1) * 20 + 10);
+export function simLevel(p, t, day = 1) {
+  const pr = p.profile; if (!pr) return 3;
+  const weekend = day === 0 || day === 6;
+  let lv = lerp(weekend && pr.weekend ? pr.weekend : pr.weekday, t);
+  for (const a of pr.adj?.[day] || []) if ((a.from == null || t >= a.from) && (a.to == null || t < a.to)) lv += a.delta;
+  return Math.max(1, Math.min(5, lv));
+}
+export const isClosed = (p, day) => day != null && !!p.closed?.includes(day);
+// day 未知時以平日（週一）計算
+export const simulate = (p, t, day = null) => levelToPct(simLevel(p, t, day ?? 1));
+// 排隊分鐘：以該地點平日「最空等級 → 最擠等級」為範圍，把人潮換算成 0 → 尖峰排隊分鐘（團隊經驗）；取 5 分鐘為單位
+export function queueMin(pct, place = null) {
+  const peak = place?.queuePeak ?? 15, knots = place?.profile?.weekday;
+  const lo = knots ? levelToPct(Math.min(...knots.map((k) => k[1]))) : 50;
+  const hi = knots ? levelToPct(Math.max(...knots.map((k) => k[1]))) : 90;
+  const r = hi > lo ? Math.max(0, Math.min(1, (pct - lo) / (hi - lo))) : 0;
+  const q = peak * r;
+  return q < 2.5 ? 0 : Math.max(5, Math.round(q / 5) * 5);
+}
 // 顯示用：人潮百分比取 5% 為單位
 export const approx = (pct) => Math.round(pct / 5) * 5;
 export const levelOf = (pct) => (pct >= 70 ? '高' : pct >= 40 ? '中' : '低');
@@ -41,7 +59,7 @@ export function samplesFor(placeId, observations) {
 export function modelEval(place, observations) {
   let m = cache.get(observations);
   if (!m) { m = new Map(); cache.set(observations, m); }
-  if (!m.has(place.id)) m.set(place.id, evaluate(samplesFor(place.id, observations), (min) => simulate(place, min)));
+  if (!m.has(place.id)) m.set(place.id, evaluate(samplesFor(place.id, observations), (min, d) => simulate(place, min, d)));
   return m.get(place.id);
 }
 // 各地點模型狀態；mode：demo＝無任何地點通過驗證（全部為模擬／混合），partial／model
@@ -53,12 +71,12 @@ export function modelReport(observations = []) {
 
 // 預測某地點在 (星期, 分鐘) 的人潮。資料不足時回傳透明的「模擬」值。
 export function predictCrowd(place, minute, observations = [], day = null) {
-  if (place.nodata) return { pct: 50, source: 'none', n: 0, sufficiency: '不足', note: '自選地點，沒有人潮資料（以中性值 50% 排程）' };
-  const sim = simulate(place, minute);
+  if (place.nodata) return { pct: 50, source: 'none', n: 0, sufficiency: '不足', note: place.id === 'self' ? '自選地點，沒有人潮資料（以中性值 50% 排程）' : '此地點未蒐集人潮資料（以中性值 50% 排程）' };
+  const sim = simulate(place, minute, day);
   const ev = observations.length >= MODEL_MIN_SAMPLES ? modelEval(place, observations) : null;
   if (ev?.status === 'ready' && day != null) {
-    const k = kernelPredict(samplesFor(place.id, observations), day, minute, sim);
-    if (k.weight >= 1) return { pct: Math.round(k.pct), source: 'model', n: ev.n, sufficiency: sufficiency(ev.n), note: `統計模型（核平滑回歸，${ev.n} 筆／${ev.dates} 天；留一日驗證 MAE ${ev.maeModel.toFixed(1)} 對模擬 ${ev.maeSim.toFixed(1)}）` };
+    const k = kernelPredict(samplesFor(place.id, observations).map((x) => ({ ...x, prior: simulate(place, x.minute, x.day) })), day, minute, sim);
+    if (k.weight >= 1) return { pct: Math.round(k.pct), source: 'model', n: ev.n, sufficiency: sufficiency(ev.n), note: `統計模型（以團隊經驗為基準的殘差修正，${ev.n} 筆／${ev.dates} 天；留一日驗證 MAE ${ev.maeModel.toFixed(1)} 對模擬 ${ev.maeSim.toFixed(1)}）` };
   }
   let wSum = 0, vSum = 0, n = 0;
   for (const o of observations) {

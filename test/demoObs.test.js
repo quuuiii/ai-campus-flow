@@ -21,12 +21,12 @@ test('固定亂數：同一天產生的資料完全相同', () => {
   const d = new Date(TODAYS[0]);
   assert.deepEqual(generateDemoObs(5, d), generateDemoObs(5, d));
 });
-test('展示進程：1、3 天資料不足；5 天部分地點模型可用，女十四舍維持不足', () => {
+test('展示進程：1、3 天資料不足；5 天「一致」情境不會宣稱模型更準；「假設差異」情境至少一地點可用；女十四舍維持不足', () => {
   for (const t of TODAYS) {
     const d = new Date(t);
-    assert.equal(modelReport(generateDemoObs(1, d)).ready, 0);
-    assert.equal(modelReport(generateDemoObs(3, d)).ready, 0);
-    const r5 = modelReport(generateDemoObs(5, d));
+    for (const sc of ['same', 'diff']) { assert.equal(modelReport(generateDemoObs(1, d, sc)).ready, 0); assert.equal(modelReport(generateDemoObs(3, d, sc)).ready, 0); }
+    assert.equal(modelReport(generateDemoObs(5, d, 'same')).ready, 0, '資料與經驗一致時不應宣稱模型更準');
+    const r5 = modelReport(generateDemoObs(5, d, 'diff'));
     assert.ok(r5.ready >= 1, t);
     assert.equal(r5.rows.find((x) => x.place.id === 'female14').status, 'insufficient');
   }

@@ -62,8 +62,10 @@ test('截止時間早於所有空堂：說明截止原因', () => {
   assert.match(plan.unscheduled[0].reason, /截止時間/);
 });
 test('零緩衝：可行且比有緩衝多出整段緩衝時間（緩衝只計一次）', () => {
-  const a = run('吃午餐', { buffer: 0 });
-  const b = run('吃午餐', { buffer: 10 });
+  // 用 90 分鐘的午間空堂：依團隊經驗，中午尖峰排隊較久，60 分鐘空堂加 10 分緩衝可能排不進去
+  const courses = [course(1, '09:00', '12:00', 'mgmt2'), course(1, '13:30', '15:00', 'eng5')];
+  const a = run('吃午餐', { buffer: 0, courses });
+  const b = run('吃午餐', { buffer: 10, courses });
   assertValid(assert, a.plan, a.ctx); assertValid(assert, b.plan, b.ctx);
   assert.equal(a.plan.items[0].slack - b.plan.items[0].slack, 10);
 });

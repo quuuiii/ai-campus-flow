@@ -1,7 +1,7 @@
 // 規則式排程引擎（非機器學習）：解析需求 → 算空堂 → 依偏好挑地點 → 衝突偵測 → 一鍵重新調配
 // 保證：任務只會落在空堂內，不與課程或其他任務重疊；步行、排隊與緩衝都計入。
 import { PLACES, KINDS, BUILDINGS, walk, placeName } from '../data/places.js';
-import { queueMin, approx, SOURCE_LABEL, defaultCrowdFn } from './crowd.js';
+import { queueMin, approx, SOURCE_LABEL, defaultCrowdFn, isClosed } from './crowd.js';
 import { toMin, fmt } from '../util.js';
 
 // ── 自然語言需求解析（規則式，非大型語言模型）──
@@ -117,7 +117,7 @@ function evaluate(t, sl, want, ctx, slotItems) {
   const pool = slotItems.reduce((a, it) => a + (KINDS[it.task.kind].flex ? it.dur - it.minDur : 0), 0);
   const out = [];
   for (const p of Object.values(PLACES)) {
-    if (!p.kinds.includes(t.kind)) continue;
+    if (!p.kinds.includes(t.kind) || isClosed(p, ctx.day)) continue;
     const walkIn = walk(sl.loc, p.id);
     const moveBuf = slotItems.length > 0 && walkIn > 0 ? buf : 0;
     const arrive = sl.cur + moveBuf + walkIn;
@@ -127,7 +127,7 @@ function evaluate(t, sl, want, ctx, slotItems) {
     if (win && start < win[0]) start = win[0];
     const cr = ctx.crowd(p, arrive);
     const pct = cr.pct;
-    const queue = t.kind === 'meal' || t.kind === 'errand' ? queueMin(pct) : 0;
+    const queue = t.kind === 'meal' || t.kind === 'errand' ? queueMin(pct, p) : 0;
     start += queue;
     const baseDur = t.kind === 'meal' ? p.eat ?? want : want;
     // 下一堂課未填教室時，步行以預設值估算，緩衝照樣保留
@@ -298,7 +298,7 @@ export function explain(it) {
   const t = it.task, p = it.place, out = [];
   const fromName = it.from ? placeName(it.from) : '目前位置';
   const srcTag = SOURCE_LABEL[it.src?.source] || '模擬';
-  const walkTxt = `從${fromName}步行約 ${it.walkIn} 分（預估）`;
+  const walkTxt = it.from === p.id ? '同一地點，不用移動（步行約 0 分）' : `從${fromName}步行約 ${it.walkIn} 分（預估）`;
   if (t.kind === 'meal') {
     out.push(`人潮約 ${approx(it.pct)}%（${srcTag}）｜${it.queue ? `估計排隊約 ${it.queue} 分` : '預期不需排隊'}｜${walkTxt}${it.isLast && it.slot.hasNext ? `、之後前往${BUILDINGS[it.slot.next] || '下一堂課教室（未填，預設估計）'}約 ${it.walkOut} 分` : ''}`);
     const w = it.worst;
@@ -306,9 +306,11 @@ export function explain(it) {
     if (p.takeaway) out.push('外帶可縮短用餐時間，把空檔留給下一件事');
     if (it.slack != null) out.push(`預留 ${it.slack} 分鐘緩衝，確保準時到${BUILDINGS[it.slot.next] || '下一堂課'}`);
   } else if (t.kind === 'study' || t.kind === 'homework' || t.kind === 'group') {
-    if (p.nodata) out.push('地點由你自選，系統沒有這裡的人潮與步行資料，只負責安排時間');
+    if (p.id === 'self') out.push('地點由你自選，系統沒有這裡的人潮與步行資料，只負責安排時間');
     else out.push(`空位率約 ${approx(100 - it.pct)}%（${srcTag}）｜安靜程度 ${p.quiet}/5（團隊假設，未實測）｜${walkTxt}`);
     if (it.dur >= 50 && t.kind !== 'group') out.push('專注模式：25 分鐘專注 + 5 分鐘休息，重複兩輪');
+  } else if (p.nodata) {
+    out.push(`沒有這裡的人潮資料，只安排時間｜${walkTxt}`);
   } else {
     out.push(`人潮約 ${approx(it.pct)}%（${srcTag}）｜${walkTxt}`);
   }
