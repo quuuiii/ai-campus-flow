@@ -13,6 +13,12 @@ export const BUILDINGS = {
   zhidao: '志道樓',
 };
 
+// 宿舍（只作為出發地點，團隊提供名單 2026-11）。到各地點的步行時間尚未查詢，使用預設值並標「預估」。
+export const DORMS = {
+  dorm_f1_4: '女一～女四舍', dorm_m3: '男三舍', dorm_m9: '男九舍', dorm_m11: '男十一舍', dorm_m13: '男十三舍',
+  dorm_xiwang: '曦望居', dorm_guesthouse: '中大會館', dorm_intl: '國際學舍',
+};
+
 // 任務類型。flex = 時間不夠時允許彈性縮短；icon 為 icons.js 的圖示名稱
 export const KINDS = {
   meal: { label: '用餐', icon: 'meal', dur: 30, flex: false, window: [660, 870] },
@@ -51,26 +57,39 @@ export const PLACES = {
   admin: { id: 'admin', name: '行政大樓', short: '行政大樓', kinds: ['errand'], nodata: true },
 };
 
-export const placeName = (id) => PLACES[id]?.name || BUILDINGS[id] || '起點';
-export const placeShort = (id) => PLACES[id]?.short || BUILDINGS[id] || '起點';
-export const originOptions = () => [...Object.entries(BUILDINGS).map(([id, name]) => [id, name]), ...Object.values(PLACES).map((p) => [p.id, p.name])];
+export const placeName = (id) => PLACES[id]?.name || BUILDINGS[id] || DORMS[id] || '起點';
+export const placeShort = (id) => PLACES[id]?.short || BUILDINGS[id] || DORMS[id] || '起點';
+// 出發地點分組：宿舍、教學大樓、校園地點（自選地點與行政大樓不列）
+export const originGroups = () => [
+  ['宿舍', Object.entries(DORMS)],
+  ['教學大樓', Object.entries(BUILDINGS)],
+  ['校園地點', Object.values(PLACES).filter((p) => !p.nodata).map((p) => [p.id, p.name])],
+];
+export const originOptions = () => originGroups().flatMap(([, list]) => list);
 
-// 兩點間預估步行分鐘（人工估算；實際請以地圖為準）
-const W = {
-  'mgmt2|backdoor': 8, 'mgmt2|female14': 9, 'mgmt2|nightmarket': 11,
-  'mgmt2|mainlib': 8, 'mgmt2|zhongzheng': 7, 'mgmt2|admin': 6,
-  'eng5|backdoor': 6, 'eng5|female14': 7, 'eng5|nightmarket': 7,
-  'eng5|mainlib': 6, 'eng5|zhongzheng': 5, 'eng5|admin': 8,
-  'mgmt2|eng5': 9,
-  'mainlib|zhongzheng': 3,
-  'backdoor|nightmarket': 4, 'backdoor|female14': 8, 'nightmarket|female14': 7,
+// 兩點間步行分鐘。GMAPS＝團隊以 Google 地圖步行路線查詢（2026-11-27，取整分鐘）；EST＝人工預估（未查證）。
+const GMAPS = {
+  'mgmt2|backdoor': 9, 'mgmt2|nightmarket': 10, 'mgmt2|pinecone': 10, 'mgmt2|female14': 11, 'mgmt2|male9_711': 3,
+  'mgmt2|mainlib': 4, 'mgmt2|zhongzheng': 4,
+  'eng5|backdoor': 7, 'eng5|pinecone': 14, 'eng5|female14': 15, 'eng5|male9_711': 15, 'eng5|mainlib': 12,
+  'backdoor|mainlib': 7, 'pinecone|mainlib': 6, 'male9_711|mainlib': 5,
 };
+const EST = {
+  'mgmt2|admin': 6, 'eng5|nightmarket': 7, 'eng5|zhongzheng': 5, 'eng5|admin': 8,
+  'mgmt2|eng5': 9, 'mainlib|zhongzheng': 3,
+  'backdoor|nightmarket': 4, 'backdoor|female14': 8, 'nightmarket|female14': 7,
+  'dorm_m9|male9_711': 1, // 7-11 位於男九舍（團隊說明），步行時間為預估
+};
+const W = { ...EST, ...GMAPS };
+const lookup = (t, a, b) => t[a + '|' + b] ?? t[b + '|' + a];
+// 'gmaps'：Google 地圖查詢；'estimate'：預估或預設值；'none'：不需移動
+export const walkSource = (a, b) => (a === b || a === 'self' || b === 'self' ? 'none' : a && b && lookup(GMAPS, a, b) != null ? 'gmaps' : 'estimate');
 export const DEFAULT_WALK = 7;
 export const walk = (a, b) => {
   if (a === b || a === 'self' || b === 'self') return 0; // 自選地點不估算步行
   // 未列在表中的組合（含新增的系館、松果、男九 7-11）用預設值，畫面標「預估」
   if (!a || !b) return 5;
-  return W[a + '|' + b] ?? W[b + '|' + a] ?? DEFAULT_WALK;
+  return lookup(W, a, b) ?? DEFAULT_WALK;
 };
 
 export const PROVENANCE =

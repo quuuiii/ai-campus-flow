@@ -1,7 +1,7 @@
 // 規劃頁：需求輸入 + 偏好 + 智慧時間軸（規則式排程，可解釋）
 import { DAYS, esc, fmt, toMin } from '../util.js';
 import { ic } from '../icons.js';
-import { BUILDINGS, KINDS, PROVENANCE, placeName, placeShort, originOptions } from '../data/places.js';
+import { BUILDINGS, KINDS, PROVENANCE, placeName, placeShort, originGroups } from '../data/places.js';
 import { DEMO_TEXT } from '../data/demo.js';
 import { buildPlan, reallocate, explain } from '../engine/scheduler.js';
 import { defaultCrowdFn, approx, SOURCE_LABEL } from '../engine/crowd.js';
@@ -53,7 +53,7 @@ export function renderPlan(ctx) {
     <details><summary>${ic('settings', 16)} 進階設定</summary>
       <div class="stack" style="margin-top:10px">
         <div class="two"><label class="f"><span>規劃開始</span><select id="winStart">${timeOpts(startList.sort((a, b) => a - b), pl.win.start)}</select></label><label class="f"><span>規劃結束</span><select id="winEnd">${timeOpts(endList.sort((a, b) => a - b), pl.win.end)}</select></label></div>
-        <div class="two"><label class="f"><span>出發地點</span><select id="origin"><option value="" ${pl.origin ? '' : 'selected'}>未指定（依前一堂課）</option>${originOptions().map(([id, n]) => `<option value="${id}" ${pl.origin === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
+        <div class="two"><label class="f"><span>出發地點</span><select id="origin"><option value="" ${pl.origin ? '' : 'selected'}>未指定（依前一堂課）</option>${originGroups().map(([g, list]) => `<optgroup label="${g}">${list.map(([id, n]) => `<option value="${id}" ${pl.origin === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</optgroup>`).join('')}</select></label>
         <label class="f"><span>移動緩衝（分）</span><input id="buffer" type="number" inputmode="numeric" min="0" max="30" step="1" value="${pl.buffer}"></label></div>
         <p class="note">需求解析為規則式（支援「N 小時 / N 分鐘 / N 點前」），不是大型語言模型。</p>
       </div></details>

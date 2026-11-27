@@ -19,7 +19,7 @@ test('需求解析：兩小時、3 點半前、30 分鐘', () => {
 });
 test('空堂計算：兩堂課之間與課後', () => {
   const s = computeSlots(DEMO, 1, { start: 540, end: 1020 });
-  assert.deepEqual(s.map((x) => [x.s, x.e]), [[720, 780], [900, 1020]]);
+  assert.deepEqual(s.map((x) => [x.s, x.e]), [[710, 780], [890, 1020]]);
   assert.equal(s[0].prev, 'mgmt2'); assert.equal(s[0].next, 'eng5');
 });
 

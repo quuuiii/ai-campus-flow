@@ -1,6 +1,6 @@
 // 狀態與 localStorage：載入、驗證、遷移、儲存。資料損壞時不丟失（備份後重設）、不覆蓋使用者資料。
 import { demoCourses, DEMO_TEXT } from './data/demo.js';
-import { BUILDINGS, PLACES, KINDS } from './data/places.js';
+import { BUILDINGS, PLACES, KINDS, DORMS } from './data/places.js';
 import { TIME_RE, toMin, uid, isoTW, toCSV, parseCSV, fmtTW } from './util.js';
 import { parseRequest } from './engine/scheduler.js';
 
@@ -73,7 +73,7 @@ export function sanitizePlan(raw, courses) {
   const s = int(raw.win?.start, 0, 1439, 540), e = int(raw.win?.end, 1, 1440, 1020);
   p.win = s < e ? { start: s, end: e } : d.win;
   p.buffer = int(raw.buffer, 0, 30, 5);
-  p.origin = raw.origin === '' || BUILDINGS[raw.origin] || PLACES[raw.origin] ? raw.origin ?? '' : '';
+  p.origin = raw.origin === '' || BUILDINGS[raw.origin] || PLACES[raw.origin] || DORMS[raw.origin] ? raw.origin ?? '' : '';
   // 只保留仍然有效的使用者操作
   const ids = new Set(p.tasks.map((t) => t.id));
   if (Array.isArray(raw.order) && raw.order.length === p.order.length && raw.order.every((i) => ids.has(i))) p.order = raw.order;
