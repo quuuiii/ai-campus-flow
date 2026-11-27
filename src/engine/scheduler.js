@@ -1,6 +1,6 @@
 // 規則式排程引擎（非機器學習）：解析需求 → 算空堂 → 依偏好挑地點 → 衝突偵測 → 一鍵重新調配
 // 保證：任務只會落在空堂內，不與課程或其他任務重疊；步行、排隊與緩衝都計入。
-import { PLACES, KINDS, BUILDINGS, walk, placeName } from '../data/places.js';
+import { PLACES, KINDS, BUILDINGS, walk, walkSource, placeName } from '../data/places.js';
 import { queueMin, approx, SOURCE_LABEL, defaultCrowdFn, isClosed } from './crowd.js';
 import { toMin, fmt } from '../util.js';
 
@@ -298,9 +298,10 @@ export function explain(it) {
   const t = it.task, p = it.place, out = [];
   const fromName = it.from ? placeName(it.from) : '目前位置';
   const srcTag = SOURCE_LABEL[it.src?.source] || '模擬';
-  const walkTxt = it.from === p.id ? '同一地點，不用移動（步行約 0 分）' : `從${fromName}步行約 ${it.walkIn} 分（預估）`;
+  const wsrc = (x, y) => (walkSource(x, y) === 'gmaps' ? 'Google 地圖' : '預估');
+  const walkTxt = it.from === p.id ? '同一地點，不用移動（步行約 0 分）' : `從${fromName}步行約 ${it.walkIn} 分（${wsrc(it.from, p.id)}）`;
   if (t.kind === 'meal') {
-    out.push(`人潮約 ${approx(it.pct)}%（${srcTag}）｜${it.queue ? `估計排隊約 ${it.queue} 分` : '預期不需排隊'}｜${walkTxt}${it.isLast && it.slot.hasNext ? `、之後前往${BUILDINGS[it.slot.next] || '下一堂課教室（未填，預設估計）'}約 ${it.walkOut} 分` : ''}`);
+    out.push(`人潮約 ${approx(it.pct)}%（${srcTag}）｜${it.queue ? `估計排隊約 ${it.queue} 分` : '預期不需排隊'}｜${walkTxt}${it.isLast && it.slot.hasNext ? `、之後前往${BUILDINGS[it.slot.next] || '下一堂課教室（未填，預設估計）'}約 ${it.walkOut} 分（${wsrc(p.id, it.slot.next)}）` : ''}`);
     const w = it.worst;
     if (w && w.place?.id !== p.id && w.pct >= 70) out.push(`避開 ${w.place?.name || '擁擠地點'}：同時段人潮約 ${approx(w.pct)}%（${SOURCE_LABEL[w.src?.source] || '模擬'}）、估計排隊約 ${w.queue} 分，可能壓縮到${it.slot.nextName ? '「' + it.slot.nextName + '」' : '下一堂課'}的準備時間`);
     if (p.takeaway) out.push('外帶可縮短用餐時間，把空檔留給下一件事');

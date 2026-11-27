@@ -6,8 +6,8 @@ export const demoCourses = () => {
   let id = 1;
   for (const day of ['1', '2', '3', '4', '5']) {
     rows.push(
-      { id: 'demo' + id++, day, start: '09:00', end: '12:00', name: '系統分析與設計', building: 'mgmt2', color: 0, demo: true },
-      { id: 'demo' + id++, day, start: '13:00', end: '15:00', name: '企業資料通訊', building: 'eng5', color: 1, demo: true },
+      { id: 'demo' + id++, day, start: '09:00', end: '11:50', name: '系統分析與設計', building: 'mgmt2', color: 0, demo: true },
+      { id: 'demo' + id++, day, start: '13:00', end: '14:50', name: '企業資料通訊', building: 'eng5', color: 1, demo: true },
     );
   }
   return rows;

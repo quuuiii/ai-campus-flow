@@ -2,7 +2,7 @@ import { buildPlan, parseTasks } from '../src/engine/scheduler.js';
 import { toMin } from '../src/util.js';
 
 export const course = (day, start, end, building = null, name = '課') => ({ id: `${day}${start}`, day: String(day), start, end, building, name });
-export const DEMO = [course(1, '09:00', '12:00', 'mgmt2', '系統分析與設計'), course(1, '13:00', '15:00', 'eng5', '企業資料通訊')];
+export const DEMO = [course(1, '09:00', '11:50', 'mgmt2', '系統分析與設計'), course(1, '13:00', '14:50', 'eng5', '企業資料通訊')];
 export const mk = (text, over = {}) => {
   const tasks = parseTasks(text);
   return { courses: DEMO, day: 1, win: { start: 540, end: 1020 }, tasks, order: tasks.map((t) => t.id), overrides: {}, scale: {}, deferred: [], mode: 'crowd', buffer: 5, ...over };

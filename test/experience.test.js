@@ -49,3 +49,22 @@ test('行政大樓不蒐集人潮但仍可當辦事目的地；系館依教務�
   for (const k of ['mgmt2', 'eng5', 'zhixi', 'hss', 'zhidao']) assert.ok(BUILDINGS[k], '舊 key 保留：' + k);
   assert.equal(Object.keys(BUILDINGS).length, 29);
 });
+import { walk, walkSource } from '../src/data/places.js';
+test('步行時間：團隊以 Google 地圖查詢的 15 組（雙向相同）', () => {
+  const G = { 'mgmt2|backdoor': 9, 'mgmt2|nightmarket': 10, 'mgmt2|pinecone': 10, 'mgmt2|female14': 11, 'mgmt2|male9_711': 3, 'mgmt2|mainlib': 4, 'mgmt2|zhongzheng': 4, 'eng5|backdoor': 7, 'eng5|pinecone': 14, 'eng5|female14': 15, 'eng5|male9_711': 15, 'eng5|mainlib': 12, 'backdoor|mainlib': 7, 'pinecone|mainlib': 6, 'male9_711|mainlib': 5 };
+  for (const [k, v] of Object.entries(G)) { const [a, b] = k.split('|'); assert.equal(walk(a, b), v, k); assert.equal(walk(b, a), v, k); assert.equal(walkSource(a, b), 'gmaps', k); }
+  assert.equal(walkSource('eng5', 'zhongzheng'), 'estimate');
+  assert.equal(walkSource('mainlib', 'mainlib'), 'none');
+});
+import { DORMS, originGroups } from '../src/data/places.js';
+import { sanitizePlan } from '../src/store.js';
+test('宿舍可作為出發地點，並會被保存；步行標示為預估', () => {
+  assert.equal(Object.keys(DORMS).length, 8);
+  assert.deepEqual(originGroups().map((g) => g[0]), ['宿舍', '教學大樓', '校園地點']);
+  assert.ok(!originGroups()[2][1].some(([id]) => id === 'self' || id === 'admin'));
+  assert.equal(sanitizePlan({ origin: 'dorm_xiwang', text: '吃午餐' }, []).origin, 'dorm_xiwang');
+  assert.equal(walkSource('dorm_m13', 'backdoor'), 'estimate');
+  const tasks = parseTasks('吃午餐');
+  const p = buildPlan({ courses: [], day: 2, win: { start: 660, end: 900 }, tasks, order: tasks.map((t) => t.id), origin: 'dorm_m9', mode: 'walk' });
+  assert.equal(p.items[0].from, 'dorm_m9');
+});
