@@ -19,12 +19,13 @@ export function renderHome(ctx) {
   const crowdPlaces = [PLACES.backdoor, PLACES.female14, PLACES.mainlib, PLACES.zhongzheng];
   const rows = crowdPlaces.map((p) => {
     const r = predictCrowd(p, now.minute, obs, now.day), study = p.vac != null, pct = approx(study ? 100 - r.pct : r.pct);
-    return `<div class="crowd-row"><div class="li-main"><b>${esc(p.short)}</b><small>${study ? '空位' : '人潮'} ${pct}%${study ? '' : '（' + levelOf(r.pct) + '）'}</small></div><div class="meter" aria-hidden="true"><i class="${study ? '' : r.pct >= 70 ? 'hi' : r.pct >= 40 ? 'mid' : ''}" style="width:${pct}%"></i></div><i class="tag src-${r.source}">${SOURCE_LABEL[r.source]}</i></div>`;
+    return `<div class="crowd-row"><div class="li-main"><b>${esc(p.short)}</b><small>${study ? '空位' : '人潮'} ${pct}%${study ? '' : '（' + levelOf(r.pct) + '）'}</small></div><div class="meter" aria-hidden="true"><i class="${study ? '' : r.pct >= 70 ? 'hi' : r.pct >= 40 ? 'mid' : ''}" style="width:${pct}%"></i></div><i class="tag src-${r.source}">${SOURCE_LABEL[r.source]}${ctx.demo.days() && r.source !== 'simulated' ? '·示範' : ''}</i></div>`;
   }).join('');
 
   return `<section class="hero"><div><span class="eyebrow">Today · 台灣時間</span><h1>${esc(dateStr)}</h1></div>
     <p>${cur ? `正在上課：${esc(cur.name)}（到 ${esc(cur.end)}）` : today.length ? '今天有 ' + today.length + ' 堂課' : '今天沒有課，整天都是空堂'}</p></section>
-  ${modelReport(obs).mode === 'demo' ? `<div class="banner warn">${ic('flask', 18)}<div><b>示範模式：</b>人潮與排隊數字為人工模擬，尚無通過驗證的預測模型。</div></div>` : ''}
+  ${ctx.demo.days() ? `<div class="banner warn">${ic('flask', 18)}<div><b>示範資料模式（${ctx.demo.days()} 天）：</b>人潮數字包含程式產生的示範資料，不是真實觀察。</div></div>` : ''}
+  ${modelReport(obs).mode === 'demo' && !ctx.demo.days() ? `<div class="banner warn">${ic('flask', 18)}<div><b>示範模式：</b>人潮與排隊數字為人工模擬，尚無通過驗證的預測模型。</div></div>` : ''}
   ${state.demo ? `<div class="banner info">${ic('flask', 18)}<div>目前顯示的是<b>示範課表</b>。到「課表」頁加入自己的課程，示範資料會在你清除後消失。</div></div>` : ''}
   <div class="quick" role="group" aria-label="捷徑">
     <button data-go="plan">${ic('sparkles', 22)}規劃</button><button data-go="schedule">${ic('calendar', 22)}課表</button>
