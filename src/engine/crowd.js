@@ -6,7 +6,12 @@ import { PLACES } from '../data/places.js';
 import { nowTW, isoTW } from '../util.js';
 import { evaluate, kernelPredict, MIN_SAMPLES as MODEL_MIN_SAMPLES } from './model.js';
 
-export const SOURCE_LABEL = { observed: '觀察', simulated: '模擬', model: '模型', none: '無資料' };
+// 五種資料來源：模擬（團隊經驗設定）、真實觀察（≥ 8 筆，只用觀察）、混合估計（3–7 筆，觀察與模擬加權）、模型預測（通過驗證）、無資料
+export const SOURCE_LABEL = { simulated: '模擬', observed: '真實觀察', blended: '混合估計', model: '模型預測', none: '無資料' };
+// 顯示用：主觀擁擠度等級（1–5），不是空位率或人流量；百分比只供內部計算
+const LEVEL_NAME = ['很空', '偏空', '普通', '擠', '爆滿'];
+export const crowdLevel = (pct) => Math.max(1, Math.min(5, Math.round(((pct - 10) / 20 + 1) * 2) / 2));
+export const crowdText = (pct) => { const lv = crowdLevel(pct); return `擁擠度 ${lv}/5（${LEVEL_NAME[Math.round(lv) - 1]}）`; };
 export const MIN_SAMPLES = 3;      // 少於此筆數不使用觀察資料
 export const FULL_WEIGHT_AT = 8;   // 達此筆數才完全採用觀察資料；之間與模擬值混合
 const OBS_PCT = { 1: 10, 2: 30, 3: 50, 4: 70, 5: 90 };
@@ -92,7 +97,7 @@ export function predictCrowd(place, minute, observations = [], day = null) {
   const obsAvg = vSum / wSum;
   const k = Math.min(1, n / FULL_WEIGHT_AT); // 透明的收縮估計：樣本少就向模擬值靠攏
   const pct = Math.round(k * obsAvg + (1 - k) * sim);
-  return { pct, source: 'observed', n, sufficiency: sufficiency(n), note: k < 1 ? `${n} 筆觀察，與模擬值混合（觀察權重 ${Math.round(k * 100)}%）` : `${n} 筆觀察的加權平均` };
+  return { pct, source: k < 1 ? 'blended' : 'observed', n, sufficiency: sufficiency(n), note: k < 1 ? `${n} 筆觀察，與模擬值混合（觀察權重 ${Math.round(k * 100)}%）` : `${n} 筆觀察的加權平均` };
 }
 
 // 在 [from, to] 內找人潮最低的時間（每 15 分鐘取樣）

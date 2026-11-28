@@ -1,13 +1,35 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadState, saveState, KEYS, sanitizeCourse, findConflict, loadObservations, saveObservations, addObservation, deleteObservation, obsToCSV, importObservationsCSV, sanitizeObs, sortCourses } from '../src/store.js';
+import { loadState, saveState, KEYS, sanitizeCourse, findConflict, loadObservations, saveObservations, addObservation, deleteObservation, obsToCSV, importObservationsCSV, sanitizeObs, sortCourses, viewCourses, viewPlan, setDemo } from '../src/store.js';
 import { parseCSV } from '../src/util.js';
 
 const mem = (init = {}) => { const m = new Map(Object.entries(init)); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), _m: m }; };
 
 test('第一次使用：載入 Demo 情境', () => {
   const { state, report } = loadState(mem());
-  assert.ok(report.firstRun); assert.ok(state.courses.length > 0); assert.ok(state.demo);
+  assert.ok(report.firstRun); assert.ok(state.demo); assert.equal(state.courses.length, 0, '使用者課表是空的，示範課表另外產生');
+  assert.ok(viewCourses(state).length > 0); assert.ok(viewPlan(state).tasks.length > 0);
+});
+test('示範課表與使用者資料隔離：切換不覆蓋、不遺失，存檔後也保留', () => {
+  const s = mem();
+  const { state } = loadState(s);
+  setDemo(state, false);
+  state.courses.push(sanitizeCourse({ id: 'mine1', day: 2, start: '10:00', end: '11:50', name: '我的課', building: 'mgmt2' }));
+  state.plan.text = '我的需求';
+  saveState(state, s);
+  setDemo(state, true); saveState(state, s);
+  const r2 = loadState(s).state;
+  assert.equal(r2.demo, true); assert.equal(r2.courses.length, 1); assert.equal(r2.courses[0].name, '我的課'); assert.equal(r2.plan.text, '我的需求');
+  assert.ok(viewCourses(r2).every((c) => c.demo)); assert.ok(!viewCourses(r2).some((c) => c.name === '我的課'));
+  setDemo(r2, false); assert.deepEqual(viewCourses(r2).map((c) => c.name), ['我的課']);
+});
+test('舊版混在一起的示範課程：只有示範 → 進入示範模式；有自己的課 → 只保留自己的課', () => {
+  const demoC = { id: 'demo0', day: 1, start: '09:00', end: '11:50', name: '系統分析與設計', building: 'mgmt2', color: 0, demo: true };
+  const a = loadState(mem({ [KEYS.state]: JSON.stringify({ courses: [demoC], plan: { text: 'x' } }) }));
+  assert.equal(a.state.demo, true); assert.equal(a.state.courses.length, 0); assert.ok(a.report.migratedDemo);
+  const mine = { id: 'm1', day: 3, start: '13:00', end: '14:50', name: '我的課', building: 'eng5', color: 2 };
+  const b = loadState(mem({ [KEYS.state]: JSON.stringify({ courses: [demoC, mine], plan: { text: 'y' } }) }));
+  assert.equal(b.state.demo, false); assert.deepEqual(b.state.courses.map((c) => c.name), ['我的課']); assert.equal(b.state.plan.text, 'y');
 });
 test('v1 → v2 遷移：保留使用者既有課表，不被 Demo 覆蓋', () => {
   const v1 = { courses: [{ id: 1700000000000, day: '2', start: '10:00', end: '12:00', name: '資料庫管理' }], tab: 'home' };

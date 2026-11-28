@@ -50,6 +50,8 @@ export function sanitizeTask(t) {
   if (t.deadline != null) { const d = Math.round(+t.deadline); if (d >= 0 && d < 1440) out.deadline = d; }
   if (Array.isArray(t.window) && t.window.length === 2 && t.window.every((x) => Number.isInteger(x) && x >= 0 && x <= 1440) && t.window[0] < t.window[1]) out.window = [...t.window];
   if (t.manual) out.manual = true;
+  if (typeof t.durGuessed === 'boolean') out.durGuessed = t.durGuessed;
+  if (Number.isInteger(t.at) && t.at >= 0 && t.at < 1440) out.at = t.at;
   if (t.userWindow && out.window) out.userWindow = true;
   if (typeof t.place === 'string' && PLACES[t.place]?.kinds.includes(out.kind)) out.place = t.place;
   return out;
@@ -86,7 +88,16 @@ export function sanitizePlan(raw, courses) {
   return p;
 }
 
-export const demoState = () => { const courses = demoCourses(); return { courses, plan: defaultPlan(courses), ui: { tab: 'home', exploreTab: 'places' }, demo: true }; };
+// 示範模式與使用者資料隔離：使用者課表永遠在 courses、規劃在 plan；示範課表不存（每次由 demoCourses() 產生），示範規劃存在 demoPlan。
+// 切換示範模式只改 demo 旗標，不會覆蓋或刪除使用者資料。
+export const demoPlanDefault = () => defaultPlan(demoCourses());
+export const demoState = () => ({ courses: [], plan: defaultPlan([], ''), demoPlan: demoPlanDefault(), ui: { tab: 'home', exploreTab: 'places' }, demo: true });
+export const viewCourses = (state) => (state.demo ? demoCourses() : state.courses);
+export const viewPlan = (state) => (state.demo ? state.demoPlan : state.plan);
+export function setDemo(state, on) {
+  state.demo = !!on;
+  if (state.demo && !state.demoPlan) state.demoPlan = demoPlanDefault();
+}
 
 // ── 載入 / 儲存 ──
 export function loadState(storage = globalThis.localStorage) {
@@ -107,7 +118,7 @@ export function loadState(storage = globalThis.localStorage) {
     if (l.ok && l.value && Array.isArray(l.value.courses) && l.value.courses.length) {
       const { courses, dropped } = sanitizeCourses(l.value.courses);
       report.migrated = courses.length > 0; report.dropped = dropped;
-      if (courses.length) return { state: { courses, plan: defaultPlan(courses), ui: { tab: 'home', exploreTab: 'places' }, demo: false }, report };
+      if (courses.length) return { state: { courses: courses.map(({ demo, ...c }) => c), plan: defaultPlan(courses), demoPlan: demoPlanDefault(), ui: { tab: 'home', exploreTab: 'places' }, demo: false }, report };
     }
     report.firstRun = true;
     return { state: demoState(), report };
@@ -115,10 +126,18 @@ export function loadState(storage = globalThis.localStorage) {
   const { courses, dropped } = sanitizeCourses(value.courses);
   report.dropped = dropped;
   const ui = { tab: ['home', 'plan', 'schedule', 'explore', 'settings'].includes(value.ui?.tab) ? value.ui.tab : 'home', exploreTab: ['places', 'back', 'night', 'crowd'].includes(value.ui?.exploreTab) ? value.ui.exploreTab : 'places' };
-  return { state: { courses, plan: sanitizePlan(value.plan, courses), ui, demo: courses.some((c) => c.demo) }, report };
+  // 舊版把示範課程混在 courses 裡（demo: true）：拆開。只有示範課程 → 進入示範模式；有自己的課 → 只保留自己的課
+  const mine = courses.filter((c) => !c.demo).map(({ demo, ...c }) => c), hadDemo = courses.some((c) => c.demo);
+  const legacyDemoOnly = typeof value.demo !== 'boolean' && hadDemo && !mine.length;
+  const demo = typeof value.demo === 'boolean' ? value.demo : legacyDemoOnly;
+  const demoCs = demoCourses();
+  const plan = legacyDemoOnly ? defaultPlan([], '') : sanitizePlan(value.plan, mine);
+  const demoPlan = value.demoPlan ? sanitizePlan(value.demoPlan, demoCs) : legacyDemoOnly ? sanitizePlan(value.plan, demoCs) : demoPlanDefault();
+  if (hadDemo && typeof value.demo !== 'boolean') report.migratedDemo = true;
+  return { state: { courses: mine, plan, demoPlan, ui, demo }, report };
 }
 export function saveState(state, storage = globalThis.localStorage) {
-  try { storage.setItem(KEYS.state, JSON.stringify({ courses: state.courses, plan: state.plan, ui: state.ui })); return true; }
+  try { storage.setItem(KEYS.state, JSON.stringify({ courses: state.courses, plan: state.plan, demoPlan: state.demoPlan, ui: state.ui, demo: !!state.demo })); return true; }
   catch { return false; }
 }
 
@@ -181,8 +200,12 @@ export function importObservationsCSV(list, text) {
 }
 
 // ── 清除（分開處理）──
-export function clearCourses(state) { state.courses = []; state.demo = false; state.plan = defaultPlan([], state.plan.text); state.plan.day = new Date().getDay(); }
+// 只清除使用者自己的課表（本機）；不影響示範模式、觀察紀錄與雲端資料
+export function clearCourses(state) { state.courses = []; state.plan = defaultPlan([], state.plan.text); state.plan.day = new Date().getDay(); }
 export function clearObservations(storage = globalThis.localStorage) { try { storage.removeItem(KEYS.obs); return true; } catch { return false; } }
-export function clearAll(storage = globalThis.localStorage) { try { storage.removeItem(KEYS.state); storage.removeItem(KEYS.obs); return true; } catch { return false; } }
+// 本機全部：課表／規劃、觀察、待上傳佇列、團隊資料快取、示範設定（不碰雲端、不碰登入狀態與舊版 v1 備份）
+export function clearAll(storage = globalThis.localStorage) {
+  try { for (const k of [KEYS.state, KEYS.obs, 'campus-flow-outbox-v1', 'campus-flow-remote-obs-v1', 'campus-flow-demo-days', 'campus-flow-demo-scenario']) storage.removeItem(k); return true; } catch { return false; }
+}
 
 export const kindLabel = (k) => KINDS[k]?.label || k;

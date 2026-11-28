@@ -41,7 +41,8 @@ const BACKDOOR = {
 export const PLACES = {
   backdoor: { id: 'backdoor', name: '後門餐飲區', short: '後門', kinds: ['meal'], eat: 30, queuePeak: 20, profile: BACKDOOR },
   nightmarket: { id: 'nightmarket', name: '宵夜街（外帶）', short: '宵夜街外帶', kinds: ['meal'], eat: 20, takeaway: true, queuePeak: 20, profile: BACKDOOR, profileNote: '團隊經驗：與後門差不多' },
-  pinecone: { id: 'pinecone', name: '松果餐廳', short: '松果', kinds: ['meal'], eat: 30, queuePeak: 15, closed: [0, 6],
+  // confirmed：團隊確認過有營業的時段；時段外不排除，但標示「營業時間未確認」並降低優先
+  pinecone: { id: 'pinecone', name: '松果餐廳', short: '松果', kinds: ['meal'], eat: 30, queuePeak: 15, closed: [0, 6], confirmed: [[H(11, 30), H(13, 30)]],
     profile: { weekday: [[H(11, 30), 2], [H(12), 4], [H(12, 20), 4], [H(12, 50), 2]] } },
   female14: { id: 'female14', name: '女十四舍 B1 商場', short: '女十四', kinds: ['meal'], eat: 30, queuePeak: 7,
     profile: { weekday: [[H(11, 30), 2], [H(12), 3.5], [H(12, 30), 3.5], [H(13), 2], [H(16, 30), 2], [H(17), 3.5], [H(17, 30), 3.5], [H(18), 2]] } },

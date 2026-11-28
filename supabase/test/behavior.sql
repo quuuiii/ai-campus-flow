@@ -1,5 +1,4 @@
 \set ON_ERROR_STOP 0
-grant all on all tables in schema public to anon, authenticated;  -- Supabase 預設授權
 insert into auth.users (id, email) values ('11111111-1111-1111-1111-111111111111','admin@x.tw'),('22222222-2222-2222-2222-222222222222','mate@x.tw'),('33333333-3333-3333-3333-333333333333','new@x.tw');
 update public.profiles set role='admin' where user_id='11111111-1111-1111-1111-111111111111';
 update public.profiles set role='member' where user_id='22222222-2222-2222-2222-222222222222';

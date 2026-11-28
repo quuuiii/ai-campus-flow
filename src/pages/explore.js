@@ -7,7 +7,7 @@ import { FOOD, FOOD_CATEGORIES } from '../data/food.js';
 import { addObservation, deleteObservation, obsToCSV, importObservationsCSV } from '../store.js';
 import { sufficiency, obsPlaceId, MIN_SAMPLES, modelReport } from '../engine/crowd.js';
 import { MIN_SAMPLES as MODEL_MIN, MIN_DATES } from '../engine/model.js';
-import { dashboardStats, BANDS, DAY_ORDER } from '../engine/stats.js';
+import { dashboardStats, collectionGaps, BANDS, DAY_ORDER } from '../engine/stats.js';
 import { DEMO_SCENARIOS } from '../data/demoObs.js';
 
 const TABS = [['places', 'map', '校園地點'], ['back', 'meal', '後門美食'], ['night', 'coffee', '宵夜街美食'], ['crowd', 'eye', '人潮觀察']];
@@ -71,6 +71,13 @@ function crowdPane(ctx) {
     <tbody>${DAY_ORDER.map((d) => `<tr><th>週${DAYS[d]}</th>${BANDS.map((b) => `<td style="background:${heat(dash.grid[d][b.id])}">${dash.grid[d][b.id] || ''}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
     ${dash.missing.length ? `<p class="note" style="margin-top:8px">缺資料地點：${dash.missing.map((p) => esc(p.short)).join('、')}</p>` : ''}
     ${dash.unknown ? `<p class="note faint">另有 ${dash.unknown} 筆舊紀錄沒有地點代碼，未列入統計。</p>` : ''}</section>`;
+  const gaps = collectionGaps(all);
+  const gapCard = `<section class="card"><div class="card-h"><h2>${ic('users')}組員資料蒐集進度</h2><small>只算真實紀錄</small></div>
+    <p class="note" style="margin-bottom:8px">每格目標 ${gaps.target} 筆（共 ${gaps.total} 格，已完成 ${gaps.filled} 格；真實紀錄 ${gaps.real} 筆）。格子越淡代表越缺，四個人可以各認領幾格。</p>
+    <div style="overflow-x:auto"><table class="heat" aria-label="地點與時段的真實觀察筆數"><thead><tr><th></th>${gaps.cols.map((c) => `<th>${c.label.replace('平日', '')}</th>`).join('')}</tr></thead>
+    <tbody>${gaps.places.map((p) => `<tr><th>${esc(p.short)}</th>${gaps.cols.map((c) => { const n = gaps.grid[p.id][c.id]; return `<td style="background:${n >= gaps.target ? 'rgba(18,168,139,.85)' : n ? `rgba(18,168,139,${(0.15 + 0.5 * n / gaps.target).toFixed(2)})` : '#fbeaea'}" title="${esc(p.short)} ${c.label}：${n} 筆">${n}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>
+    <p class="note faint" style="margin-top:4px">欄位：早上（11:00 前）、午餐（11–14）、下午（14–17）、晚上（17:00 後）為平日；週末另計。</p>
+    ${gaps.todo.length ? `<h3 style="margin:12px 0 4px;font-size:14px">最需要補的</h3>${gaps.todo.map((x) => `<div class="li"><div class="li-main"><b>${esc(x.place.short)} · ${x.col.label}</b><small>目前 ${x.n} 筆，還差 ${x.need} 筆</small></div></div>`).join('')}` : '<p class="note">所有格子都達到目標了。</p>'}</section>`;
   const q = ctx.sync.queue(), pend = q.filter((x) => x.status === 'pending').length, fail = q.filter((x) => x.status === 'failed');
   const st = ctx.sync.state;
   const syncCard = `<section class="card"><div class="card-h"><h2>${ic('cloud')}團隊同步</h2><i class="tag ${ctx.sync.configured ? 'ok' : 'warn'}">${ctx.sync.configured ? '已設定' : '未設定'}</i></div>
@@ -88,8 +95,8 @@ function crowdPane(ctx) {
   const modelCard = `<section class="card"><div class="card-h"><h2>${ic('target')}預測模型狀態</h2><i class="tag ${rep.mode === 'demo' ? 'warn' : 'ok'}">${rep.mode === 'demo' ? '示範模式' : rep.mode === 'partial' ? '部分地點可用' : '全部可用'}${dd && rep.mode !== 'demo' ? '（示範資料）' : ''}</i></div>
     ${demoCtl}
     <div class="banner ${rep.mode === 'demo' ? 'warn' : 'info'}" style="margin-bottom:10px">${ic(rep.mode === 'demo' ? 'flask' : 'info', 18)}<div>${rep.mode === 'demo' ? '<b>示範模式：</b>目前沒有任何地點通過模型驗證，規劃頁的人潮數字是人工模擬值（或少量觀察的混合），<b>不是預測</b>。' : '通過驗證的地點才會標示「模型」；其餘仍為模擬／觀察混合。'}</div></div>
-    <p class="note" style="margin-bottom:8px">模型：以團隊經驗（模擬值）為基準，用核平滑回歸（時間核寬 30 分鐘）學習觀察與經驗的差距；資料少時貼近經驗。啟用條件：每地點 ≥ ${MODEL_MIN} 筆、≥ ${MIN_DATES} 個不同日期，且「留一日驗證」平均誤差（MAE，單位為百分點）≤ 模擬基準的 90% 並優於全體平均基準。觀察的 1–5 級以 10/30/50/70/90% 換算，為假設。</p>
-    ${rep.rows.map((r) => `<div class="li"><div class="li-main"><b>${esc(r.place.short)}</b><small>${r.n} 筆 · ${r.dates} 天${r.maeModel != null ? ` · MAE 模型 ${r.maeModel.toFixed(1)}／模擬 ${r.maeSim.toFixed(1)}／平均 ${r.maeMean.toFixed(1)}` : ''}</small><small>${esc(r.reason)}</small></div><i class="${ST[r.status][1]}">${ST[r.status][0]}${dd && r.n ? '（示範）' : ''}</i></div>`).join('')}
+    <p class="note" style="margin-bottom:8px">MAE（平均絕對誤差）以等級換算的百分點表示，1 級 = 20 點，越小越準；「模擬」＝團隊經驗、「平均」＝所有觀察的平均值。模型：以團隊經驗（模擬值）為基準，用核平滑回歸（時間核寬 30 分鐘）學習觀察與經驗的差距；資料少時貼近經驗。啟用條件：每地點 ≥ ${MODEL_MIN} 筆、≥ ${MIN_DATES} 個不同日期，且「留一日驗證」平均誤差（MAE，單位為百分點）≤ 模擬基準的 90% 並優於全體平均基準。觀察的 1–5 級以 10/30/50/70/90% 換算，為假設。</p>
+    ${rep.rows.map((r) => `<div class="li"><div class="li-main"><b>${esc(r.place.short)}</b><small>${r.n} 筆 · ${r.dates} 天${r.maeModel != null ? ` · MAE 模型 ${r.maeModel.toFixed(1)}／模擬 ${r.maeSim.toFixed(1)}／平均 ${r.maeMean.toFixed(1)}` : ''}</small><small>${esc(r.reason)}</small><small>日期分布：${(() => { const d = dash.rows.find((x) => x.place.id === r.place.id); return d && d.n ? DAY_ORDER.filter((k) => d.byDay[k]).map((k) => `週${DAYS[k]} ${d.byDay[k]}`).join('、') : '—'; })()}</small></div><i class="${ST[r.status][1]}">${ST[r.status][0]}${dd && r.n ? '（示範）' : ''}</i></div>`).join('')}
     <p class="note faint" style="margin-top:8px">${dd ? '目前結果來自示範資料，只用於說明機制，不代表真實預測準確度。' : '尚未在真實資料上訓練或驗證；上表會隨你們累積的觀察紀錄自動更新。'}</p></section>`;
   return `<div class="stack">
   <div class="banner info">${ic('info', 18)}<div><b>資料來源說明：</b>每個地點累積 ≥ ${MIN_SAMPLES} 筆觀察後，才會與模擬值混合納入預測；不足時一律標示「模擬」，不會假裝成即時預測。</div></div>
@@ -107,6 +114,7 @@ function crowdPane(ctx) {
     <div class="row" style="margin-bottom:10px"><button class="btn sm" id="expObs" ${list.length ? '' : 'disabled'}>${ic('download', 16)}匯出 CSV</button><label class="btn sm" style="cursor:pointer">${ic('upload', 16)}匯入 CSV<input id="impObs" type="file" accept=".csv,text/csv" hidden></label></div>
     ${list.length ? '' : '<p class="note">還沒有觀察資料。</p>'}</section></div>
   ${dashCard}
+  ${gapCard}
   ${modelCard}
   ${syncCard}
   <section class="card"><div class="card-h"><h2>${ic('list')}觀察紀錄</h2></div>

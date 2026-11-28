@@ -1,7 +1,7 @@
 // 規則式排程引擎（非機器學習）：解析需求 → 算空堂 → 依偏好挑地點 → 衝突偵測 → 一鍵重新調配
 // 保證：任務只會落在空堂內，不與課程或其他任務重疊；步行、排隊與緩衝都計入。
 import { PLACES, KINDS, BUILDINGS, walk, walkSource, placeName } from '../data/places.js';
-import { queueMin, approx, SOURCE_LABEL, defaultCrowdFn, isClosed } from './crowd.js';
+import { queueMin, crowdText, SOURCE_LABEL, defaultCrowdFn, isClosed } from './crowd.js';
 import { toMin, fmt } from '../util.js';
 
 // ── 自然語言需求解析（規則式，非大型語言模型）──
@@ -83,6 +83,24 @@ function parseRange(seg) {
   if (!(a < b) || b > 1440) return null;
   return { start: a, end: b, assumed: !p1 && h1 >= 1 && h1 <= 7 };
 }
+// 「十二點半吃午餐」「12:30 吃飯」「晚上七點吃晚餐」→ 從該時間開始（容許 30 分鐘內開始）
+function parseAt(seg) {
+  let m = seg.match(/(\d{1,2})\s*[:：]\s*(\d{2})(?!\s*(?:之|以)?前)(?!\s*(?:到|至|~|～|-|－|—))/);
+  let h, mm = 0, period = '';
+  if (m) { h = +m[1]; mm = +m[2]; }
+  else {
+    m = seg.match(new RegExp(PERIOD + '\\s*' + NUM + '\\s*點\\s*(半|' + NUM + '\\s*分)?(?!\\s*(?:之|以)?前)(?!\\s*(?:到|至|~|～|-|－|—))'));
+    if (!m) return null;
+    period = m[1] || ''; h = cnNum(m[2]);
+    if (h == null) return null;
+    if (m[3] === '半') mm = 30; else if (m[4]) mm = cnNum(m[4]) ?? 0;
+    if (!period) { const pm = seg.match(/(上午|早上|中午|下午|傍晚|晚上)/); period = pm ? pm[1] : ''; }
+  }
+  if (h > 24 || mm > 59) return null;
+  const assumed = !period && h >= 1 && h <= 7;
+  return { minute: toH(h, period, true) * 60 + mm, assumed };
+}
+
 // 只說時段沒說幾點
 const DAYPART = [[/晚上/, [1080, 1320]], [/傍晚/, [1020, 1140]], [/下午/, [780, 1080]], [/上午|早上/, [480, 720]], [/中午/, [690, 810]]];
 
@@ -103,6 +121,10 @@ export function parseRequest(text) {
       task.window = [range.start, range.end]; task.deadline = range.end; task.userWindow = true;
       if (d == null) { task.dur = Math.max(10, Math.min(240, range.end - range.start)); task.durGuessed = false; }
       if (range.assumed) notes.push(`「${seg}」推測為 ${fmt(range.start)}–${fmt(range.end)}，如不正確請手動修改`);
+    } else if (!parseDeadline(seg) && parseAt(seg)) {
+      const at = parseAt(seg);
+      task.window = [at.minute, Math.min(1440, at.minute + task.dur + 30)]; task.userWindow = true; task.at = at.minute;
+      if (at.assumed) notes.push(`「${seg}」的時間推測為 ${fmt(at.minute)}，如不正確請手動修改`);
     } else {
       const dl = parseDeadline(seg);
       if (dl) { task.deadline = dl.minute; if (dl.assumed) notes.push(`「${seg}」的時間推測為 ${fmt(dl.minute)}，如不正確請手動修改`); }
@@ -142,6 +164,14 @@ export function computeSlots(courses, day, win, origin = null) {
   return slots.filter((s) => s.e - s.s >= 15);
 }
 
+// 已知營業時段：有明確設定就用（松果），否則以團隊提供人潮資料的時段（前 60 分、後 30 分）為準；讀書地點不限制
+export function confirmedHours(p) {
+  if (p.confirmed) return p.confirmed;
+  const k = p.profile?.weekday;
+  if (!p.kinds.includes('meal') || !k) return null;
+  return [[k[0][0] - 60, k[k.length - 1][0] + 30]];
+}
+
 // ── 候選地點評分（分數越低越好）──
 function score(mode, kind, p, c) {
   const w = c.walkIn + c.walkOut;
@@ -151,6 +181,7 @@ function score(mode, kind, p, c) {
   else if (mode === 'focus') s = social ? (w + c.queue + c.dur) * 3 + c.pct * 0.3 : (5 - (p.quiet ?? 3)) * 25 + c.pct * 0.4 + w;
   else s = c.pct + w * 1.5 + c.queue * 2 + (kind === 'study' || kind === 'homework' ? (5 - p.quiet) * 8 : 0);
   if (c.sticky) s -= 12; // 連續任務留在同一地點，少走冤枉路
+  if (c.unconfirmed) s += 60; // 營業時間未確認：有其他選擇時不優先
   return s;
 }
 
@@ -174,7 +205,8 @@ function evaluate(t, sl, want, ctx, slotItems) {
     const pct = cr.pct;
     const queue = t.kind === 'meal' || t.kind === 'errand' ? queueMin(pct, p) : 0;
     start += queue;
-    const baseDur = t.kind === 'meal' ? p.eat ?? want : want;
+    // 用餐時長：使用者有寫就用使用者的，沒寫才用地點的預設用餐時間
+    const baseDur = t.kind === 'meal' && t.durGuessed !== false && !t.manualDur ? p.eat ?? want : want;
     // 下一堂課未填教室時，步行以預設值估算，緩衝照樣保留
     const walkOut = sl.hasNext ? walk(p.id, sl.next) : 0;
     const limit = Math.min(sl.e - walkOut - (sl.hasNext ? buf : 0), t.deadline ?? 1e9, t.userWindow && t.window ? t.window[1] : 1e9);
@@ -186,7 +218,9 @@ function evaluate(t, sl, want, ctx, slotItems) {
     else if (flex && avail >= minDur) dur = avail;
     else if (!flex && avail + pool >= baseDur) need = baseDur - avail; // 縮短前面彈性任務換取空間
     else continue;
-    const c = { place: p, walkIn, walkOut, arrive, queue, start, dur, minDur, need, pct, src: cr, moveBuf, sticky: sl.loc === p.id };
+    const conf = confirmedHours(p);
+    const unconfirmed = !!conf && !conf.some(([a, b]) => arrive >= a && arrive <= b);
+    const c = { place: p, walkIn, walkOut, arrive, queue, start, dur, minDur, need, pct, src: cr, moveBuf, sticky: sl.loc === p.id, unconfirmed };
     c.score = score(ctx.mode, t.kind, p, c);
     out.push(c);
   }
@@ -233,11 +267,10 @@ function whyNot(t, slots, ctx) {
 export function buildPlan(c) {
   const ctx = { buffer: 5, overrides: {}, scale: {}, deferred: [], mode: 'crowd', crowd: defaultCrowdFn(), ...c };
   ctx.buffer = Math.max(0, Number(ctx.buffer) || 0);
-  // 任務指定的時段若超出規劃範圍，自動延長（例如晚上 6–9 點讀書）
+  // 任務指定的時段若超出規劃範圍：不自動延長，回傳 extendTo 讓介面先詢問使用者
   const tw = (ctx.tasks || []).filter((t) => !ctx.deferred.includes(t.id));
-  const ws = Math.min(ctx.win.start, ...tw.filter((t) => t.userWindow && t.window).map((t) => t.window[0]));
-  const we = Math.max(ctx.win.end, ...tw.filter((t) => t.userWindow || t.deadline != null).map((t) => (t.userWindow && t.window ? t.window[1] : t.deadline)));
-  ctx.win = { start: ws, end: Math.min(1440, we) };
+  const outside = tw.filter((t) => t.userWindow && t.window && (t.window[0] < ctx.win.start || t.window[1] > ctx.win.end));
+  const extendTo = outside.length ? { start: Math.min(ctx.win.start, ...outside.map((t) => t.window[0])), end: Math.min(1440, Math.max(ctx.win.end, ...outside.map((t) => t.window[1]))), tasks: outside.map((t) => t.id) } : null;
   const slots = computeSlots(ctx.courses, ctx.day, ctx.win, ctx.origin || null).map((s) => ({ ...s, cur: s.s, loc: s.prev, items: [] }));
   const baseSlots = slots.map((s) => ({ s: s.s, e: s.e }));
   const ordered = ctx.order.map((id) => ctx.tasks.find((t) => t.id === id)).filter((t) => t && !ctx.deferred.includes(t.id));
@@ -254,7 +287,7 @@ export function buildPlan(c) {
       if (ov) { const f = cands.find((x) => x.place.id === ov); if (f) pick = f; }
       hit = { k, pick, cands };
     }
-    if (!hit) { unscheduled.push({ task: t, reason: whyNot(t, baseSlots, ctx) }); continue; }
+    if (!hit) { unscheduled.push({ task: t, reason: extendTo?.tasks.includes(t.id) ? `指定的 ${fmt(t.window[0])}–${fmt(t.window[1])} 超出目前規劃範圍（${fmt(ctx.win.start)}–${fmt(ctx.win.end)}），需要延長規劃時段` : whyNot(t, baseSlots, ctx), outOfRange: !!extendTo?.tasks.includes(t.id) }); continue; }
     const sl = slots[hit.k];
     let { pick } = hit;
     if (pick.need > 0) {
@@ -278,7 +311,7 @@ export function buildPlan(c) {
       task: t, place: pick.place, slot: sl2, slotIndex: hit.k, from: sl2.loc, depart: pick.arrive - pick.walkIn, free: pick.arrive - pick.walkIn - (sl2.cur + pick.moveBuf),
       walkIn: pick.walkIn, walkOut: pick.walkOut, arrive: pick.arrive, queue: pick.queue,
       start: pick.start, end: pick.start + pick.dur, dur: pick.dur, minDur: pick.minDur, want,
-      pct: pick.pct, src: pick.src, shrunk: t.kind === 'meal' ? 0 : Math.max(0, want - pick.dur), worst,
+      unconfirmed: pick.unconfirmed, pct: pick.pct, src: pick.src, shrunk: t.kind === 'meal' ? 0 : Math.max(0, want - pick.dur), worst,
       alts: hit.cands.map((x) => ({ id: x.place.id, name: x.place.name, pct: x.pct, walk: x.walkIn + x.walkOut, queue: x.queue, src: x.src, picked: x.place.id === pick.place.id })),
       deadlineSlack: t.deadline != null ? t.deadline - (pick.start + pick.dur) : null,
       slack: null,
@@ -311,7 +344,7 @@ export function buildPlan(c) {
   const toClassWalk = items.reduce((a, i) => a + (i.isLast && i.slot.hasNext ? i.walkOut : 0), 0);
   const totalWalk = moveWalk + toClassWalk;
   const savedQueue = items.reduce((a, i) => a + Math.max(0, (i.worst?.queue || 0) - i.queue), 0);
-  return { slots, items, unscheduled, warnings, level, totalWalk, moveWalk, toClassWalk, savedQueue, freeMin, needMin, win: ctx.win };
+  return { slots, items, unscheduled, warnings, level, totalWalk, moveWalk, toClassWalk, savedQueue, freeMin, needMin, win: ctx.win, extendTo };
 }
 
 // ── AI 一鍵重新調配：枚舉任務順序，必要時壓縮彈性任務或延後 ──
@@ -357,22 +390,24 @@ export function explain(it) {
   const wsrc = (x, y) => (walkSource(x, y) === 'gmaps' ? 'Google 地圖' : '預估');
   const walkTxt = it.from === p.id ? '同一地點，不用移動（步行約 0 分）' : `從${fromName}步行約 ${it.walkIn} 分（${wsrc(it.from, p.id)}）`;
   if (t.kind === 'meal') {
-    out.push(`人潮約 ${approx(it.pct)}%（${srcTag}）｜${it.queue ? `估計排隊約 ${it.queue} 分` : '預期不需排隊'}｜${walkTxt}${it.isLast && it.slot.hasNext ? `、之後前往${BUILDINGS[it.slot.next] || '下一堂課教室（未填，預設估計）'}約 ${it.walkOut} 分（${wsrc(p.id, it.slot.next)}）` : ''}`);
+    out.push(`${crowdText(it.pct)}（${srcTag}）｜${it.queue ? `估計排隊約 ${it.queue} 分` : '預期不需排隊'}｜${walkTxt}${it.isLast && it.slot.hasNext ? `、之後前往${BUILDINGS[it.slot.next] || '下一堂課教室（未填，預設估計）'}約 ${it.walkOut} 分（${wsrc(p.id, it.slot.next)}）` : ''}`);
     const w = it.worst;
-    if (w && w.place?.id !== p.id && w.pct >= 70) out.push(`避開 ${w.place?.name || '擁擠地點'}：同時段人潮約 ${approx(w.pct)}%（${SOURCE_LABEL[w.src?.source] || '模擬'}）、估計排隊約 ${w.queue} 分，可能壓縮到${it.slot.nextName ? '「' + it.slot.nextName + '」' : '下一堂課'}的準備時間`);
+    if (w && w.place?.id !== p.id && w.pct >= 70) out.push(`避開 ${w.place?.name || '擁擠地點'}：同時段${crowdText(w.pct)}（${SOURCE_LABEL[w.src?.source] || '模擬'}）、估計排隊約 ${w.queue} 分，可能壓縮到${it.slot.nextName ? '「' + it.slot.nextName + '」' : '下一堂課'}的準備時間`);
     if (p.takeaway) out.push('外帶可縮短用餐時間，把空檔留給下一件事');
     if (it.slack != null) out.push(`預留 ${it.slack} 分鐘緩衝，確保準時到${BUILDINGS[it.slot.next] || '下一堂課'}`);
   } else if (t.kind === 'study' || t.kind === 'homework' || t.kind === 'group') {
     if (p.id === 'self') out.push('地點由你自選，系統沒有這裡的人潮與步行資料，只負責安排時間');
-    else out.push(`空位率約 ${approx(100 - it.pct)}%（${srcTag}）｜安靜程度 ${p.quiet}/5（團隊假設，未實測）｜${walkTxt}`);
+    else out.push(`${crowdText(it.pct)}（${srcTag}）｜安靜程度 ${p.quiet}/5（團隊假設，未實測）｜${walkTxt}`);
     if (it.dur >= 50 && t.kind !== 'group') out.push('專注模式：25 分鐘專注 + 5 分鐘休息，重複兩輪');
   } else if (p.nodata) {
     out.push(`沒有這裡的人潮資料，只安排時間｜${walkTxt}`);
   } else {
-    out.push(`人潮約 ${approx(it.pct)}%（${srcTag}）｜${walkTxt}`);
+    out.push(`${crowdText(it.pct)}（${srcTag}）｜${walkTxt}`);
   }
   if (t.place) out.push(`你指定的地點：${p.name}`);
-  if (t.userWindow && t.window) out.push(`排在你指定的 ${fmt(t.window[0])}–${fmt(t.window[1])} 時段內`);
+  if (t.at != null) out.push(`照你指定的 ${fmt(t.at)} 開始（容許 30 分鐘內）`);
+  else if (t.userWindow && t.window) out.push(`排在你指定的 ${fmt(t.window[0])}–${fmt(t.window[1])} 時段內`);
+  if (it.unconfirmed) out.push(`待確認：團隊只確認過${p.short}在 ${confirmedHours(p).map(([a, b]) => fmt(a) + '–' + fmt(b)).join('、')} 有營業，這個時間是否營業未確認`);
   if (p.unverified) out.push(`待確認：${p.unverified}`);
   if (it.src?.note) out.push(`資料說明：${it.src.note}`);
   if (t.deadline != null) out.push(it.deadlineSlack === 0 ? `剛好在 ${fmt(t.deadline)} 前完成（無額外緩衝）` : `預計 ${fmt(it.end)} 完成，距 ${fmt(t.deadline)} 截止還有 ${it.deadlineSlack} 分`);

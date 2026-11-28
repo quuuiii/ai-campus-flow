@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildPlan, explain, reallocate } from '../src/engine/scheduler.js';
-import { approx, queueMin } from '../src/engine/crowd.js';
+import { crowdText, queueMin } from '../src/engine/crowd.js';
 import { walk } from '../src/data/places.js';
 import { mk, assertValid, course } from './helpers.js';
 
@@ -40,8 +40,8 @@ test(`一致性：${scenarios.length} 種情境（時間/步行/排隊/緩衝/�
       if (it.place.id === 'self') { assert.match(text1, /沒有這裡的人潮與步行資料/); assert.equal(it.walkIn, 0); }
       else if (it.place.nodata) { assert.match(text1, /沒有這裡的人潮資料/); assert.ok(text1.includes(`步行約 ${it.walkIn} 分`)); }
       else {
-        if (it.task.kind === 'meal' || it.task.kind === 'errand') assert.ok(text1.includes(`人潮約 ${approx(it.pct)}%`), `理由人潮不符 ${tag}`);
-        else assert.ok(text1.includes(`空位率約 ${approx(100 - it.pct)}%`), `理由空位不符 ${tag}`);
+        if (it.task.kind === 'meal' || it.task.kind === 'errand') assert.ok(text1.includes(crowdText(it.pct)), `理由人潮不符 ${tag}`);
+        else assert.ok(text1.includes(crowdText(it.pct)), `理由擁擠度不符 ${tag}`);
         assert.ok(text1.includes(`步行約 ${it.walkIn} 分`), `理由步行不符 ${tag}`);
       }
       if (it.queue) assert.ok(text1.includes(`排隊約 ${it.queue} 分`), `理由排隊不符 ${tag}`);

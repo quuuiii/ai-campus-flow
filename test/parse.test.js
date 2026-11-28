@@ -32,12 +32,17 @@ test('指定地點與時段：後門午餐、晚上六點到九點讀書', () =>
   assert.equal(r.tasks[0].place, 'backdoor');
   assert.deepEqual([r.tasks[1].window, r.tasks[1].dur, r.tasks[1].deadline], [[1080, 1260], 180, 1260]);
   const courses = [{ id: 'a', day: '1', start: '13:00', end: '15:50', building: 'mgmt2', name: '組織行為' }];
-  const p = buildPlan({ courses, day: 1, win: { start: 540, end: 1020 }, tasks: r.tasks, order: r.tasks.map((t) => t.id), mode: 'walk' });
+  // 先不延長：讀書超出規劃範圍 → 不排、回報 extendTo 讓介面詢問
+  const p0 = buildPlan({ courses, day: 1, win: { start: 540, end: 1020 }, tasks: r.tasks, order: r.tasks.map((t) => t.id), mode: 'walk' });
+  assert.equal(p0.win.end, 1020, '不可自動延長');
+  assert.deepEqual(p0.extendTo, { start: 540, end: 1260, tasks: ['study1'] });
+  assert.ok(p0.unscheduled[0].outOfRange);
+  // 使用者同意延長後
+  const p = buildPlan({ courses, day: 1, win: { start: 540, end: 1260 }, tasks: r.tasks, order: r.tasks.map((t) => t.id), mode: 'walk' });
   assert.equal(p.unscheduled.length, 0);
   assert.equal(p.items.find((i) => i.task.kind === 'meal').place.id, 'backdoor', '最短步行模式也要去指定的後門');
   const st = p.items.find((i) => i.task.kind === 'study');
   assert.ok(st.start >= 1080 && st.end <= 1260 && st.end - st.start >= 144);
-  assert.equal(p.win.end, 1260, '規劃範圍自動延長到 21:00');
 });
 test('時段解析：各種寫法', () => {
   const W = (s) => parseRequest(s).tasks[0].window;
@@ -58,4 +63,25 @@ test('指定的地點休息時不偷換地點，並說明原因', () => {
   const t = parseRequest('松果吃午餐').tasks;
   const p = buildPlan({ courses: [], day: 6, win: { start: 540, end: 1020 }, tasks: t, order: t.map((x) => x.id) });
   assert.equal(p.items.length, 0); assert.match(p.unscheduled[0].reason, /松果這天沒有營業/);
+});
+
+test('使用者指定的用餐時間與時長不被地點預設覆蓋', () => {
+  const T = (s) => parseRequest(s).tasks[0];
+  assert.deepEqual(T('十二點半吃午餐').window, [750, 810]);
+  assert.deepEqual(T('晚上七點吃晚餐').window, [1140, 1200]);
+  const t = parseRequest('在後門吃午餐一小時').tasks;
+  const p = buildPlan({ courses: [], day: 2, win: { start: 540, end: 1020 }, tasks: t, order: t.map((x) => x.id) });
+  assert.equal(p.items[0].end - p.items[0].start, 60, '後門預設吃 30 分，但使用者說一小時');
+  const t2 = parseRequest('十二點半吃午餐').tasks;
+  const p2 = buildPlan({ courses: [], day: 2, win: { start: 540, end: 1020 }, tasks: t2, order: t2.map((x) => x.id) });
+  assert.ok(p2.items[0].arrive >= 750 && p2.items[0].start <= 780, '在 12:30 抵達、30 分鐘內開始');
+});
+test('營業時間未確認：晚上優先排有晚間資料的地點，未確認的會被標示', () => {
+  const t = parseRequest('晚上七點吃晚餐').tasks;
+  const p = buildPlan({ courses: [], day: 2, win: { start: 540, end: 1320 }, tasks: t, order: t.map((x) => x.id) });
+  assert.ok(['backdoor', 'nightmarket'].includes(p.items[0].place.id));
+  assert.ok(!p.items[0].unconfirmed);
+  const t2 = parseRequest('晚上七點在松果吃晚餐').tasks;
+  const p2 = buildPlan({ courses: [], day: 2, win: { start: 540, end: 1320 }, tasks: t2, order: t2.map((x) => x.id) });
+  assert.equal(p2.items[0].place.id, 'pinecone'); assert.ok(p2.items[0].unconfirmed, '使用者指定時照排，但標示未確認');
 });

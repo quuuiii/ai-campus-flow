@@ -131,6 +131,9 @@ create policy "members read approved and own" on public.crowd_observations for s
   using (status = 'approved' or reporter = auth.uid() or public.is_admin());
 drop policy if exists "admin reviews" on public.crowd_observations;
 create policy "admin reviews" on public.crowd_observations for update to authenticated using (public.is_admin()) with check (public.is_admin());
+-- 「重複就略過」上傳（on_conflict）需要能看見剛寫入的列；欄位權限只開放 id、client_id、status，所以不會洩漏內容
+drop policy if exists "anon sees minimal" on public.crowd_observations;
+create policy "anon sees minimal" on public.crowd_observations for select to anon using (true);
 -- 不建立 delete policy：任何前端都不能刪除；需要時由管理員在後台處理（保留審核軌跡）。
 -- anon 不能直接讀表，只能讀下方公開 view。
 
@@ -151,9 +154,11 @@ create or replace view public.crowd_dashboard as
 grant select on public.crowd_dashboard to anon, authenticated;
 
 -- 管理員審核用：待審清單（RLS 限 admin）
-create or replace view public.crowd_review_queue with (security_invoker = on) as
+create or replace view public.crowd_review_queue with (security_invoker = off) as
   select id, client_id, observed_at, place_id, crowd_level, queue_minutes, note, source, created_at
-  from public.crowd_observations where status = 'pending' order by created_at;
+  from public.crowd_observations where status = 'pending' and public.is_admin() order by created_at;
+revoke all on public.crowd_review_queue from anon;
+grant select on public.crowd_review_queue to authenticated;
 
 -- 管理員看成員清單（含 email，僅 admin 可讀；用於把組員從 reporter 升為 member）
 create or replace view public.member_list as
@@ -161,3 +166,19 @@ create or replace view public.member_list as
   where public.is_admin();
 revoke all on public.member_list from anon;
 grant select on public.member_list to authenticated;
+
+-- ───────────────────────── 5. 欄位權限（最小權限）─────────────────────────
+-- Supabase 預設把整張表的權限給 anon / authenticated，這裡收回，只開放必要欄位。
+-- 效果：一般使用者讀不到別人的 reporter、device_hash、note；只能寫入觀察內容；只有 status 可被（管理員）更新。
+revoke all on public.crowd_observations from anon, authenticated;
+grant insert (client_id, observed_at, place_id, crowd_level, queue_minutes, method, source, note, device_hash)
+  on public.crowd_observations to anon, authenticated;
+grant select (id, client_id, status) on public.crowd_observations to anon, authenticated; -- 去重（on_conflict）與審核 WHERE 需要
+grant update (status) on public.crowd_observations to authenticated;                     -- RLS 再限制為 admin
+
+revoke all on public.profiles from anon, authenticated;
+grant select (user_id, role) on public.profiles to authenticated;  -- RLS：只能看自己（admin 看全部）
+grant update (role) on public.profiles to authenticated;           -- RLS：只有 admin
+
+revoke all on public.places from anon, authenticated;
+grant select on public.places to anon, authenticated;

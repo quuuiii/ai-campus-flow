@@ -1,45 +1,52 @@
 # AI Campus Flow
 
-AI 個人化校園行程助手，四人團隊競賽原型。
+給中央大學學生的校園行程助手：讀取課表找出空堂，依步行時間、人潮與截止時間安排吃飯、讀書、作業與討論，並說明每個推薦的理由。另外可以讓團隊回報真實人潮，資料累積後再評估預測模型。
 
-## 開始使用
+正式網站：<https://ai-campus-flow-qtg2.vercel.app/>（Vercel，`main` 分支自動部署）
+
+## 功能（現況）
+
+| 功能 | 狀態 |
+|---|---|
+| 課表：中大節次格子（1–9、Z、A–F）、新增／編輯／刪除、連堂、衝突檢查、清除 | 可用 |
+| 示範課表：另外保存、唯讀，切換不影響自己的課表 | 可用 |
+| Planner：自然語言解析（地點、時段、時長、截止）、手動修改、偏好、換地點、調整順序、一鍵重新調配 | 可用（規則式，非大型語言模型） |
+| 人潮：五種來源（模擬／真實觀察／混合估計／模型預測／無資料），以擁擠度 1–5 顯示 | 可用；模擬值來自團隊經驗，非實測 |
+| 人潮回報、CSV 匯出入、資料儀表板、組員蒐集進度、模型評估 | 可用 |
+| 團隊同步（Supabase）：匿名回報、Email 登入、組員直接核可、管理員審核 | 程式完成並以模擬伺服器與本機 PostgreSQL 測試；正式環境需依文件設定與驗證 |
+| 預測模型（殘差核平滑回歸＋留一日驗證） | 程式完成；尚無真實資料通過驗證 |
+| 校園地點、後門與宵夜街餐廳目錄（35 間，營業狀態待確認） | 可用 |
+| PWA（可加入主畫面、離線開啟） | 可用 |
+
+## 開發與測試
 
 ```bash
 npm install
-npm run dev
+npm run dev          # 本機開發
+npm run build        # 建置
+npm test             # 單元、不變條件、一致性、隨機排程（fuzz）、模型、資料守門測試
 ```
 
-## V2 功能
+端對端（需 Playwright + Chromium）：
 
-- 一鍵載入中大 Demo 情境（課表、需求、排好的行程，開啟即有畫面）
-- 規則式智慧排程：空堂 × 步行時間 × 人潮模擬 × 截止時間，並附「推薦理由」
-- 時間緊繃 / 衝突偵測 + 「AI 一鍵重新調配」
-- 偏好權重（避開人潮 / 最短步行 / 高效率專注）、換地點、調整順序、勾選完成
-- 數據來源標示：人潮與空位率皆為模擬估算
-- `vercel.json` rewrite，重新整理不會 404
+```bash
+npm run build && npx vite preview --port 4173 &
+python3 -I e2e/mobile.py                     # 手機版完整流程
+# 團隊同步／登入（假的 Supabase 端點）
+VITE_SUPABASE_URL=https://e2etest.supabase.co VITE_SUPABASE_ANON_KEY=sb_publishable_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx npx vite build --outDir dist-sync
+npx vite preview --outDir dist-sync --port 4174 &
+python3 -I e2e/sync.py && python3 -I e2e/auth.py
+```
 
-## 舊功能
+資料庫權限（本機 PostgreSQL，不需 Supabase）：`PGHOST=... bash supabase/test/run.sh`
 
-- 課表新增、刪除與衝突檢查
-- 校園示範地點人潮分級
-- 依課表空堂與任務產生行程
-- 瀏覽器本機資料保存
-- PWA manifest
+## 文件
 
-**重要：** 人潮資料為示範數據，排程為規則式演算法，並非真實 AI 預測。請勿當作即時校園資訊。
+- `docs/architecture.md`：系統架構、資料流、儲存與隔離
+- `docs/ai-architecture.md`：人潮資料來源、模型與評估方式、限制
+- `docs/supabase-plan.md`：Supabase 建立、SQL、環境變數、管理員初始化、驗證清單
+- `docs/audit-2026-11.md`：審查報告
 
-## 部署
+## 資料誠實原則
 
-執行 `npm run build`，將 `dist` 部署至靜態網站服務（例如 Vercel）。
-
-
-## v2 重構摘要
-- 結構：`src/pages/*`（頁面）、`src/engine/*`（排程、人潮）、`src/store.js`（localStorage 驗證/遷移）、`src/data/*`。
-- 指令：`npm test`（node:test）、`npm run build`。
-- 資料誠實：人潮分「模擬／觀察／模型」三種來源；統計模型已實作，但尚無真實資料通過驗證（示範模式），詳見 `docs/ai-architecture.md`。
-- 資料庫評估：`docs/supabase-plan.md`、`supabase/schema.sql`（草案，未部署）。
-
-## 測試
-- `npm test`：單元／不變條件／一致性（Planner 216 種情境）／模型／餐廳清單守門測試。
-- 手機端對端：`npm run build && npx vite preview --port 4173`，另開終端機 `python3 -I e2e/mobile.py`（需 Playwright + Chromium）。
-- 團隊同步端對端（假伺服器）：見 `e2e/sync.py` 開頭註解。
+排程是規則式演算法，不是大型語言模型。人潮「模擬」值來自團隊成員經驗；擁擠度是主觀等級，不是空位率或人流量。示範資料一律標示「示範」且不上傳。模型只有在真實資料通過驗證後才會被標為「模型預測」。
