@@ -9,7 +9,7 @@ src/
   main.js            路由、共用 ctx（save / toast / go / courses() / plan() / allObs() / sync / auth / demo）
   store.js           localStorage 讀寫、驗證、遷移、示範隔離、觀察紀錄、CSV
   util.js  icons.js  共用工具、Lucide 圖示
-  data/              places（地點、時段經驗、步行時間、宿舍、系館）、demo（示範課表）、demoObs（示範觀察）、food、locations
+  data/              places（地點、時段經驗、步行時間、宿舍、系館）、demo（示範課表）、food、locations
   engine/
     scheduler.js     需求解析、空堂、排程、縮短、重新調配、推薦理由
     crowd.js         人潮來源判定（五種）、擁擠度顯示、排隊估計
@@ -33,7 +33,7 @@ test/                node:test 單元測試     e2e/  Playwright 端對端
 | `campus-flow-observations-v1` | 這台裝置的觀察紀錄 |
 | `campus-flow-outbox-v1` | 待上傳佇列（pending / failed） |
 | `campus-flow-remote-obs-v1` | 下載的團隊已核可資料 |
-| `campus-flow-demo-days`、`-demo-scenario` | 示範人潮資料設定 |
+| `campus-flow-last-obs-place` | 回報表單上次選的地點 |
 | `campus-flow-session-v1` | 登入 token |
 
 損壞的資料會先備份成 `campus-flow-v2-corrupt-<時間>` 再重設。
@@ -41,7 +41,6 @@ test/                node:test 單元測試     e2e/  Playwright 端對端
 ## 示範模式的隔離
 
 - **示範課表**：不寫進 `courses`，每次由 `demoCourses()` 產生；示範規劃存在 `demoPlan`。`ctx.courses()`／`ctx.plan()` 依 `demo` 旗標回傳對應的一份。示範課表在課表頁為唯讀。
-- **示範人潮資料**：只在記憶體產生，帶 `demo: true`，不進「我的觀察紀錄」、不進待上傳佇列、不計入組員蒐集進度。
 - 舊版把示範課混在 `courses`（`demo: true`）的資料，載入時自動拆開。
 
 ## 排程流程

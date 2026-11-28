@@ -203,9 +203,9 @@ export function importObservationsCSV(list, text) {
 // 只清除使用者自己的課表（本機）；不影響示範模式、觀察紀錄與雲端資料
 export function clearCourses(state) { state.courses = []; state.plan = defaultPlan([], state.plan.text); state.plan.day = new Date().getDay(); }
 export function clearObservations(storage = globalThis.localStorage) { try { storage.removeItem(KEYS.obs); return true; } catch { return false; } }
-// 本機全部：課表／規劃、觀察、待上傳佇列、團隊資料快取、示範設定（不碰雲端、不碰登入狀態與舊版 v1 備份）
+// 本機全部：課表／規劃、觀察、待上傳佇列、團隊資料快取、回報表單設定（不碰雲端、不碰登入狀態與舊版 v1 備份）
 export function clearAll(storage = globalThis.localStorage) {
-  try { for (const k of [KEYS.state, KEYS.obs, 'campus-flow-outbox-v1', 'campus-flow-remote-obs-v1', 'campus-flow-demo-days', 'campus-flow-demo-scenario']) storage.removeItem(k); return true; } catch { return false; }
+  try { for (const k of [KEYS.state, KEYS.obs, 'campus-flow-outbox-v1', 'campus-flow-remote-obs-v1', 'campus-flow-last-obs-place']) storage.removeItem(k); return true; } catch { return false; }
 }
 
 export const kindLabel = (k) => KINDS[k]?.label || k;

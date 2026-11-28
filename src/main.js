@@ -5,7 +5,6 @@ import { COURSE_COLORS } from './data/demo.js';
 import { loadState, saveState, loadObservations, saveObservations, viewCourses, viewPlan, setDemo } from './store.js';
 import { sessionFromHash, saveSession, loadSession, validToken, whoami, sendMagicLink, signOut } from './lib/auth.js';
 import { syncConfig, enqueue, flush, pull, remoteObs, mergeObs, outbox, retryFailed } from './lib/sync.js';
-import { generateDemoObs } from './data/demoObs.js';
 import { renderHome, bindHome } from './pages/home.js';
 import { renderPlan, bindPlan } from './pages/plan.js';
 import { renderSchedule, bindSchedule } from './pages/schedule.js';
@@ -17,9 +16,8 @@ const TABS = [['home', 'home', '首頁', renderHome, bindHome], ['plan', 'sparkl
 const { state, report } = loadState();
 let observations = loadObservations().list;
 const syncCfg = syncConfig(import.meta.env);
-const DEMO_KEY = 'campus-flow-demo-days';
-let demoDays = (() => { try { const v = +localStorage.getItem(DEMO_KEY); return [1, 3, 5].includes(v) ? v : 0; } catch { return 0; } })();
-let demoScenario = (() => { try { return localStorage.getItem('campus-flow-demo-scenario') === 'diff' ? 'diff' : 'same'; } catch { return 'same'; } })();
+// 已移除的示範人潮資料設定：清掉舊的 key
+try { localStorage.removeItem('campus-flow-demo-days'); localStorage.removeItem('campus-flow-demo-scenario'); } catch { /* 忽略 */ }
 let merged = null; // 本機＋團隊資料，快取到資料變動為止（模型評估以陣列為快取鍵）
 const syncState = { lastPull: null, lastError: '', busy: false };
 // 登入連結回來：從網址 hash 取出 token 後立刻清除網址，避免 token 留在瀏覽紀錄
@@ -49,14 +47,7 @@ const ctx = {
   setDemoCourses: (on) => { setDemo(state, on); ctx.save(); render(true); },
   setObs: (l) => { observations = l; merged = null; return saveObservations(l); },
   // 預測、模型、儀表板用：本機紀錄＋團隊已核可資料（未設定同步時只有本機）
-  allObs: () => (merged ??= [...(syncCfg ? mergeObs(observations, remoteObs(localStorage)) : observations), ...generateDemoObs(demoDays, new Date(), demoScenario)]),
-  // 示範資料集（只在本機產生，不上傳、不存進觀察紀錄）
-  demo: {
-    days: () => demoDays,
-    scenario: () => demoScenario,
-    setScenario: (s) => { demoScenario = s === 'diff' ? 'diff' : 'same'; try { localStorage.setItem('campus-flow-demo-scenario', demoScenario); } catch { /* 忽略 */ } merged = null; render(true); },
-    set: (n) => { demoDays = [1, 3, 5].includes(n) ? n : 0; try { localStorage.setItem(DEMO_KEY, String(demoDays)); } catch { /* 忽略 */ } merged = null; render(true); },
-  },
+  allObs: () => (merged ??= syncCfg ? mergeObs(observations, remoteObs(localStorage)) : observations),
   auth: {
     configured: !!syncCfg, state: authState,
     signedIn: () => !!loadSession(localStorage),
