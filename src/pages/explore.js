@@ -12,6 +12,10 @@ import { DEMO_SCENARIOS } from '../data/demoObs.js';
 
 const TABS = [['places', 'map', '校園地點'], ['back', 'meal', '後門美食'], ['night', 'coffee', '宵夜街美食'], ['crowd', 'eye', '人潮觀察']];
 const q = { place: '', cat: '全部', food: '', fcat: '全部', sel: '' };
+// 人潮回報：記住上一次選的地點（存在這台裝置），送出後不跳回第一個
+const LAST_PLACE_KEY = 'campus-flow-last-obs-place';
+const lastPlace = () => { try { const v = localStorage.getItem(LAST_PLACE_KEY); return PLACES[v] && !PLACES[v].nodata ? v : ''; } catch { return ''; } };
+const rememberPlace = (id) => { try { localStorage.setItem(LAST_PLACE_KEY, id); } catch { /* 無法儲存時忽略 */ } };
 const mapSearch = (s) => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s);
 // 不內建任何建築物座標：地圖以「地點名稱」搜尋定位，位置由地圖服務解析（未經逐點人工驗證）
 const embedUrl = (query) => 'https://maps.google.com/maps?hl=zh-TW&output=embed&q=' + encodeURIComponent(query);
@@ -103,7 +107,7 @@ function crowdPane(ctx) {
   <div class="grid2" style="align-items:start">
   <section class="card"><div class="card-h"><h2>${ic('plus')}新增觀察</h2></div>
     <form id="obsForm" novalidate><div class="form-err" id="obsErr" role="alert"></div>
-      <label class="f"><span>地點</span><select name="placeId">${Object.values(PLACES).filter((p) => !p.nodata).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label>
+      <label class="f"><span>地點</span><select name="placeId">${Object.values(PLACES).filter((p) => !p.nodata).map((p) => `<option value="${p.id}" ${lastPlace() === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
       <div class="f"><span style="display:block;margin-bottom:6px;font-weight:700">擁擠度</span><div class="rate" role="radiogroup" aria-label="擁擠度">${[[1, '很空'], [2, '偏空'], [3, '普通'], [4, '擁擠'], [5, '爆滿']].map(([n, t]) => `<label><input type="radio" name="crowd" value="${n}" ${n === 3 ? 'checked' : ''}><span>${n}<small>${t}</small></span></label>`).join('')}</div></div>
       <div class="two"><label class="f"><span>排隊分鐘（選填）</span><input name="queue" type="number" inputmode="numeric" min="0" max="180" placeholder="例如 5"></label>
       <label class="f"><span>觀察方式</span><select name="method" id="obsMethod"><option value="onsite">現場觀察（現在）</option><option value="manual">事後紀錄</option></select></label></div>
@@ -150,12 +154,14 @@ export function bindExplore(ctx) {
 
 function bindCrowd(ctx) {
   const $ = (s) => document.querySelector(s);
+  const ps = document.querySelector('#obsForm select[name=placeId]'); if (ps) ps.onchange = () => rememberPlace(ps.value);
   const method = $('#obsMethod'); method.onchange = () => { $('#whenBox').hidden = method.value !== 'manual'; };
   $('#obsForm').onsubmit = (e) => {
     e.preventDefault();
     const d = Object.fromEntries(new FormData(e.target)), err = $('#obsErr');
     const fail = (m) => { err.innerHTML = ic('warn', 16) + '<span>' + esc(m) + '</span>'; err.classList.add('on'); };
     const place = PLACES[d.placeId];
+    if (place) rememberPlace(place.id);
     if (!place) return fail('請選擇地點');
     if (d.queue !== '' && !(Number.isInteger(+d.queue) && +d.queue >= 0 && +d.queue <= 180)) return fail('排隊分鐘請輸入 0–180 的整數');
     let ts = new Date().toISOString();
