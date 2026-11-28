@@ -14,6 +14,8 @@ const PLAN = {
   pinecone: { perDay: 6, from: 690, to: 810 },
   male9_711: { perDay: 6, from: 690, to: 1080 },
   mainlib: { perDay: 6, from: 600, to: 1140 },
+  nightmarket: { perDay: 6, from: 660, to: 1140 },
+  zhongzheng: { perDay: 6, from: 600, to: 1140 },
   female14: { perDay: 1, from: 700, to: 1060 },
 };
 
