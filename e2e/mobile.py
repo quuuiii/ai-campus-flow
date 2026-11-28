@@ -34,6 +34,9 @@ async def main():
 async def run_flows(pg, ctx, errs):
     # ── 課表 ──
     await pg.click('[data-tab=schedule]')
+    ok('預設是唯讀的示範課表', await pg.locator('#exitDemo').count() == 1 and await pg.locator('[data-cell]').count() == 0)
+    await pg.click('#exitDemo'); await pg.wait_for_timeout(150)
+    ok('切到我的課表（空的）', await pg.locator('.pc.has').count() == 0)
     await pg.click('[data-cell="6:7"]'); await pg.wait_for_timeout(150)
     ok('點空格帶入星期/時間', (await pg.input_value('select[name=day]')) == '6' and (await pg.input_value('input[name=start]')) == '15:00')
     await pg.select_option('#perE', '8'); ok('結束節次連動時間', (await pg.input_value('input[name=end]')) == '16:50')
@@ -52,6 +55,12 @@ async def run_flows(pg, ctx, errs):
     await pg.click('[data-view=list]'); await pg.click('[data-del]:near(:text("演算法B")) >> nth=0') if False else None
     await pg.locator('.li:has-text("演算法B") [data-del]').click(); await pg.wait_for_timeout(150)
     ok('刪除課程', await pg.locator('.li:has-text("演算法B")').count() == 0)
+    # ── 回到示範課表（不得影響剛剛的課表）──
+    await pg.click('[data-view=list]') if await pg.locator('[data-view=list]').count() else None
+    await pg.click('[data-cell="2:2"]') if await pg.locator('[data-cell="2:2"]').count() else None
+    await pg.fill('input[name=name]', '我的保留課'); await pg.click('#courseForm button[type=submit]'); await pg.wait_for_timeout(150)
+    await pg.click('[data-tab=settings]'); await pg.click('#loadDemo'); await pg.wait_for_timeout(150)
+    await pg.click('[data-tab=schedule]'); ok('示範模式顯示示範課表', '系統分析與設計' in await pg.inner_text('main') and '我的保留課' not in await pg.inner_text('main'))
     # ── Planner ──
     await pg.click('[data-tab=plan]'); await pg.wait_for_selector('.tcard')
     n0 = await pg.locator('.tcard').count(); ok('Planner 產生任務卡', n0 >= 3, n0)
@@ -89,7 +98,8 @@ async def run_flows(pg, ctx, errs):
     ok('顯示模型狀態（示範模式）', '示範模式' in (await pg.inner_text('main')))
     m = await pg.inner_text('main')
     ok('儀表板：總筆數與門檻', '資料儀表板' in m and '差 17 筆' in m)
-    ok('儀表板：星期×時段表格有資料', await pg.locator('table.heat td:has-text("3")').count() == 1)
+    ok('儀表板：星期×時段表格有資料', await pg.locator('section:has-text("資料儀表板") table.heat td:has-text("3")').count() == 1)
+    ok('組員蒐集進度只算真實紀錄', await pg.locator('section:has-text("組員資料蒐集進度")').count() == 1 and '真實紀錄 3 筆' in await pg.inner_text('main'))
     ok('未設定同步時明確標示', '尚未連接團隊資料庫' in m)
     await pg.click('[data-demo="5"]'); await pg.wait_for_timeout(200)
     m = await pg.inner_text('main')
@@ -123,7 +133,9 @@ async def run_flows(pg, ctx, errs):
     await pg.click('#tab-night'); ok('宵夜街 14 間', await pg.locator('#foodList .li').count() == 14)
     # ── 設定：分開清除 ──
     await pg.click('[data-tab=settings]'); await pg.click('#clrObs'); await pg.wait_for_timeout(150)
-    await pg.click('[data-tab=schedule]'); await pg.click('[data-view=week]'); ok('清除觀察不影響課表', await pg.locator('.pc.has').count() > 0)
+    await pg.click('[data-tab=schedule]'); await pg.click('#exitDemo'); await pg.wait_for_timeout(150)
+    ok('切回我的課表：之前的課還在（示範切換不遺失）', '我的保留課' in await pg.inner_text('main'))
+    await pg.click('[data-view=week]'); ok('清除觀察不影響課表', await pg.locator('.pc.has').count() > 0)
     await pg.click('[data-tab=explore]'); await pg.click('#tab-crowd'); ok('清除觀察後紀錄為 0', await pg.locator('[data-delobs]').count() == 0)
     # 課表頁：清除全部課表（先取消、再確認）
     pg.remove_listener('dialog', pg._dlg) if hasattr(pg, '_dlg') else None

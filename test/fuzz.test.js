@@ -14,12 +14,14 @@ test('1500 組隨機情境（含重新調配）全部滿足不變條件', () => 
     while (t < 1200) { const d = 50 + Math.floor(r() * 3) * 60; if (r() < 0.6) courses.push({ id: 'c' + t, day: '1', start: fmt(t), end: fmt(t + d), building: B[Math.floor(r() * 6)], name: 'c' }); t += d + 10 + Math.floor(r() * 6) * 10; }
     const tasks = parseTasks(T.filter(() => r() < 0.45).join('，'));
     const ctx = { courses, day: 1, win: { start: 480 + Math.floor(r() * 3) * 60, end: 1080 + Math.floor(r() * 3) * 60 }, tasks, order: tasks.map((x) => x.id), overrides: {}, scale: {}, deferred: [], mode: ['crowd', 'walk', 'focus'][i % 3], buffer: [0, 5, 10][Math.floor(r() * 3)], origin: r() < 0.5 ? 'mainlib' : '' };
-    for (const c of [ctx, { ...ctx, ...reallocate(ctx) }]) {
+    // 也測：隨機調整順序（提早/延後）、隨機縮短（scale）、隨機指定地點（換地點）
+    const shuffled = { ...ctx, order: [...ctx.order].sort(() => r() - 0.5), scale: Object.fromEntries(tasks.filter(() => r() < 0.4).map((t) => [t.id, 0.8])), overrides: Object.fromEntries(tasks.filter(() => r() < 0.4).map((t) => [t.id, ['backdoor', 'mainlib', 'zhongzheng', 'female14', 'male9_711', 'pinecone'][Math.floor(r() * 6)]])) };
+    for (const c of [ctx, { ...ctx, ...reallocate(ctx) }, shuffled, { ...shuffled, ...reallocate(shuffled) }]) {
       const p = buildPlan(c), cs = courses.map((x) => [toMin(x.start), toMin(x.end)]), tag = JSON.stringify({ i, courses: courses.map((x) => [x.start, x.end]) });
       const its = [...p.items].sort((a, b) => a.start - b.start);
       for (const it of p.items) {
         assert.ok(!cs.some(([s, e]) => it.depart < e && it.end > s), '任務或移動與課程重疊 ' + tag);
-        assert.ok(it.start >= p.win.start && it.end <= p.win.end && p.win.start <= c.win.start && p.win.end >= c.win.end, '超出時間範圍 ' + tag);
+        assert.ok(it.start >= c.win.start && it.end <= c.win.end, '超出時間範圍 ' + tag);
         if (it.task.place) assert.equal(it.place.id, it.task.place, '沒去指定地點 ' + tag);
         const w = it.task.window || (it.task.kind === 'meal' ? [660, 870] : null);
         if (w) assert.ok(it.start >= w[0], '早於時段開始 ' + tag);
@@ -43,7 +45,7 @@ test('不提早出發空等：有時段的任務在時段開始時抵達，之�
   const { parseRequest } = await import('../src/engine/scheduler.js');
   const r = parseRequest('我想吃後門午餐、晚上六點到九點去讀書');
   const courses = [{ id: 'a', day: '1', start: '13:00', end: '15:50', building: 'mgmt2', name: '組織行為' }];
-  const p = buildPlan({ courses, day: 1, win: { start: 540, end: 1020 }, tasks: r.tasks, order: r.tasks.map((t) => t.id), mode: 'walk' });
+  const p = buildPlan({ courses, day: 1, win: { start: 540, end: 1260 }, tasks: r.tasks, order: r.tasks.map((t) => t.id), mode: 'walk' });
   const st = p.items.find((i) => i.task.kind === 'study'), meal = p.items.find((i) => i.task.kind === 'meal');
   assert.equal(st.arrive, 1080); assert.equal(st.depart, 1080 - st.walkIn); assert.equal(st.free, 1080 - st.walkIn - 950);
   assert.equal(meal.arrive, 660, '午餐 11:00 抵達，不是 09:05');

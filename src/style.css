@@ -251,3 +251,5 @@ details.more{margin-top:10px;border-top:1px solid #eef2f1;padding-top:6px}
 .heat{border-collapse:separate;border-spacing:3px;width:100%;font-size:12px;text-align:center}
 .heat th{font-weight:700;color:var(--muted);padding:2px 4px;white-space:nowrap}
 .heat td{height:30px;border-radius:6px;font-weight:700;color:var(--navy);min-width:44px}
+
+.tag.src-blended{background:#fff1d6;color:#8a5a00}.tag.src-none{background:#eef0f2;color:#8da0aa}

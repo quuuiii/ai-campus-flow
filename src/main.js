@@ -2,7 +2,7 @@
 import './style.css';
 import { ic } from './icons.js';
 import { COURSE_COLORS } from './data/demo.js';
-import { loadState, saveState, loadObservations, saveObservations } from './store.js';
+import { loadState, saveState, loadObservations, saveObservations, viewCourses, viewPlan, setDemo } from './store.js';
 import { sessionFromHash, saveSession, loadSession, validToken, whoami, sendMagicLink, signOut } from './lib/auth.js';
 import { syncConfig, enqueue, flush, pull, remoteObs, mergeObs, outbox, retryFailed } from './lib/sync.js';
 import { generateDemoObs } from './data/demoObs.js';
@@ -43,6 +43,10 @@ const toast = (msg, type = '') => {
 const ctx = {
   state, toast,
   obs: () => observations,
+  // 目前要顯示的課表與規劃（示範課表模式時為示範那一份，使用者資料不受影響）
+  courses: () => viewCourses(state),
+  plan: () => viewPlan(state),
+  setDemoCourses: (on) => { setDemo(state, on); ctx.save(); render(true); },
   setObs: (l) => { observations = l; merged = null; return saveObservations(l); },
   // 預測、模型、儀表板用：本機紀錄＋團隊已核可資料（未設定同步時只有本機）
   allObs: () => (merged ??= [...(syncCfg ? mergeObs(observations, remoteObs(localStorage)) : observations), ...generateDemoObs(demoDays, new Date(), demoScenario)]),
@@ -105,6 +109,7 @@ document.body.insertAdjacentHTML('beforeend', '<div id="toast" aria-live="polite
 render();
 if (report.corruptBackup) toast('偵測到損壞的資料，已備份後重設', 'bad');
 else if (report.migrated) toast('已從舊版載入你的課表', 'ok');
+else if (report.migratedDemo) toast('示範課表已與你的課表分開保存', 'ok');
 else if (report.dropped) toast(`有 ${report.dropped} 筆課程資料無效，已略過`, '');
 if (authNotice === 'ok') toast('登入成功', 'ok'); else if (authNotice) toast(authNotice, 'bad');
 if (syncCfg) { window.addEventListener('hashchange', () => { const n = takeHash(); if (n) { toast(n === 'ok' ? '登入成功' : n, n === 'ok' ? 'ok' : 'bad'); ctx.auth.load(); } }); ctx.auth.load(); ctx.sync.run(); window.addEventListener('online', () => ctx.sync.run()); }

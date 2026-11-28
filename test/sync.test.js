@@ -63,3 +63,12 @@ test('環境變數容錯：去掉 /rest/v1/；支援 publishable key；拒絕 se
   const s = mem(); enqueue(s, obs('h1'));
   await flush({ url: 'https://abc.supabase.co', key: k }, s, async (u, o) => { assert.equal(o.headers.apikey, k); assert.ok(!('Authorization' in o.headers), '未登入不帶 Bearer'); return res(201); });
 });
+test('資料蒐集缺口：只算真實紀錄，示範資料不計', async () => {
+  const { collectionGaps } = await import('../src/engine/stats.js');
+  const list = [obs('r1'), obs('r2'), { ...obs('d1'), demo: true }, { ...obs('w1'), timestamp: '2026-11-28T12:00:00+08:00' }];
+  const g = collectionGaps(list);
+  assert.equal(g.real, 3);
+  assert.equal(g.grid.backdoor.lunch, 2); assert.equal(g.grid.backdoor.weekend, 1);
+  assert.ok(g.todo.length > 0 && g.todo.every((x) => x.need > 0));
+  assert.ok(!g.places.some((p) => p.nodata));
+});

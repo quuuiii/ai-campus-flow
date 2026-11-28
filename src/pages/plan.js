@@ -4,7 +4,7 @@ import { ic } from '../icons.js';
 import { BUILDINGS, KINDS, PLACES, PROVENANCE, placeName, placeShort, originGroups } from '../data/places.js';
 import { DEMO_TEXT } from '../data/demo.js';
 import { buildPlan, reallocate, explain } from '../engine/scheduler.js';
-import { defaultCrowdFn, approx, SOURCE_LABEL } from '../engine/crowd.js';
+import { defaultCrowdFn, crowdText, SOURCE_LABEL } from '../engine/crowd.js';
 import { taskState, demoState, sanitizeTask } from '../store.js';
 
 const MODES = [['crowd', 'leaf', '避開人潮'], ['walk', 'walk', '最短步行'], ['focus', 'target', '專注效率']];
@@ -13,7 +13,7 @@ const HOUR = (m) => fmt(m);
 let demoOn = false; // 是否載入示範資料集（只影響標籤）
 let draft = null; // 尚未按「產生行程」的輸入文字：切換偏好、星期等設定時保留，不被清掉
 
-export const planCtx = (ctx) => ({ courses: ctx.state.courses, ...ctx.state.plan, crowd: defaultCrowdFn(ctx.allObs(), ctx.state.plan.day) });
+export const planCtx = (ctx) => ({ courses: ctx.courses(), ...ctx.plan(), crowd: defaultCrowdFn(ctx.allObs(), ctx.plan().day) });
 export const srcTag = (s, demo = false) => `<i class="tag src-${s}">${SOURCE_LABEL[s] || '模擬'}${demo && (s === 'observed' || s === 'model') ? '·示範資料' : ''}</i>`;
 const crowdCls = (p) => (p >= 80 ? 'hi' : p >= 60 ? 'mid' : '');
 
@@ -23,11 +23,11 @@ export function mapsUrl(fromId, toId) {
 }
 
 export function renderPlan(ctx) {
-  const { state } = ctx, pl = state.plan;
+  const { state } = ctx, pl = ctx.plan(), courses = ctx.courses();
   const plan = buildPlan(planCtx(ctx));
   demoOn = ctx.demo.days() > 0;
-  const dayCourses = state.courses.filter((c) => +c.day === +pl.day).sort((a, b) => toMin(a.start) - toMin(b.start));
-  const days = [...new Set([...state.courses.map((c) => +c.day), +pl.day])].sort();
+  const dayCourses = courses.filter((c) => +c.day === +pl.day).sort((a, b) => toMin(a.start) - toMin(b.start));
+  const days = [...new Set([...courses.map((c) => +c.day), +pl.day])].sort();
   const doneN = plan.items.filter((i) => pl.done[i.task.id]).length;
   const timeOpts = (list, cur) => list.map((m) => `<option value="${m}" ${cur === m ? 'selected' : ''}>${HOUR(m)}</option>`).join('');
   const startList = [420, 480, 540, 600, 660, 720], endList = [1020, 1080, 1200, 1320];
@@ -63,11 +63,13 @@ export function renderPlan(ctx) {
       </div></details>
   </aside>`;
 
+  const ext = plan.extendTo ? `<div class="banner warn" style="margin-top:10px">${ic('clock', 18)}<div style="flex:1">有 ${plan.extendTo.tasks.length} 項任務指定的時間（${plan.extendTo.tasks.map((id) => { const t = pl.tasks.find((x) => x.id === id); return t ? `${KINDS[t.kind].label} ${fmt(t.window[0])}–${fmt(t.window[1])}` : ''; }).join('、')}）超出目前規劃範圍 ${fmt(pl.win.start)}–${fmt(pl.win.end)}。要延長規劃時段嗎？
+    <div class="row" style="margin-top:8px"><button class="btn sm primary" id="extendWin">延長到 ${fmt(plan.extendTo.start)}–${fmt(plan.extendTo.end)}</button><span class="note">不延長的話，這些任務不會排入</span></div></div></div>` : '';
   const [lvl, icon, title] = { ok: ['ok', 'ok', '行程順暢'], warn: ['warn', 'warn', '時間緊繃'], bad: ['bad', 'bad', '時間衝突'] }[plan.level];
   const status = `<section class="status ${lvl}" aria-live="polite">
     <div class="status-top"><div><b>${ic(icon, 18)}${title}</b><p>${plan.level === 'ok' ? '所有任務都排進空堂，並預留移動緩衝。' : esc(plan.warnings.map((w) => w.text).join('；'))}${pl.deferred.length ? `；已將 ${pl.deferred.length} 項建議延後到晚上或明天` : ''}</p></div>
     <button class="btn sm ${plan.level !== 'ok' ? 'primary' : 'outline'}" id="realloc">${ic('refresh', 16)}${plan.level !== 'ok' ? '一鍵重新調配' : '重新最佳化'}</button></div>
-    <div class="kpi"><span>完成 <b>${doneN}/${plan.items.length}</b></span><span>步行約 <b>${plan.totalWalk} 分</b><small>（移動 ${plan.moveWalk}＋回課堂 ${plan.toClassWalk}，預估）</small></span><span>估計少排隊 <b>${plan.savedQueue} 分</b></span></div></section>`;
+    <div class="kpi"><span>完成 <b>${doneN}/${plan.items.length}</b></span><span>步行約 <b>${plan.totalWalk} 分</b><small>（移動 ${plan.moveWalk}＋回課堂 ${plan.toClassWalk}，預估）</small></span><span>估計少排隊 <b>${plan.savedQueue} 分</b></span></div></section>${ext}`;
 
   const blocks = dayCourses.filter((c) => toMin(c.end) > pl.win.start && toMin(c.start) < pl.win.end).map((c) => ({ s: toMin(c.start), html: classBlock(c) }));
   plan.slots.forEach((sl, i) => blocks.push({ s: sl.s, html: slotBlock(sl, i, plan, pl) }));
@@ -76,6 +78,7 @@ export function renderPlan(ctx) {
   const deferred = pl.deferred.map((id) => pl.tasks.find((t) => t.id === id)).filter(Boolean).map((t) => `<article class="tcard defer"><div class="th"><span class="tk">${ic(KINDS[t.kind].icon, 16)}${KINDS[t.kind].label}</span><span class="tag">已延後</span></div><p class="why1">今天空堂不足，建議挪到晚上或明天。</p></article>`).join('');
 
   return `<div class="page-head"><span class="eyebrow">Planner</span><h1>智慧行程規劃</h1></div>
+  ${state.demo ? `<div class="banner info" style="margin-bottom:12px">${ic('flask', 18)}<div style="flex:1"><b>示範課表：</b>這裡用的是示範課表與示範規劃，你自己的課表與規劃另外保存、不受影響。</div><button class="btn sm" id="exitDemoCourses">使用我的課表</button></div>` : ''}
   ${demoOn ? `<div class="banner warn" style="margin-bottom:12px">${ic('flask', 18)}<div><b>示範資料模式：</b>人潮數字包含程式產生的示範資料，不是真實觀察。可在「探索 → 人潮觀察」關閉。</div></div>` : ''}
   <div class="plan">${panel}<section class="results">${status}
     <div class="tl-head"><h2>週${DAYS[pl.day]} 時間軸</h2><details class="prov"><summary>${ic('info', 16)}數字皆為模擬／預估</summary><p>${esc(PROVENANCE)}</p><p>步行分鐘為人工預估，請以實際走路為準。松苑、第九餐廳暫停營業，已移除。</p></details></div>
@@ -93,7 +96,7 @@ function slotBlock(sl, i, plan, pl) {
 function taskCard(it, pl) {
   const t = it.task, k = KINDS[t.kind], done = !!pl.done[t.id], idx = pl.order.indexOf(t.id);
   const study = ['study', 'homework', 'group'].includes(t.kind);
-  const pill = it.place.nodata ? '<i class="tag">無人潮資料</i>' : study ? `<i class="pill ${crowdCls(it.pct)}">空位約 ${approx(100 - it.pct)}%</i><i class="pill q">安靜 ${it.place.quiet}/5 <small>假設</small></i>` : `<i class="pill ${crowdCls(it.pct)}">人潮約 ${approx(it.pct)}%</i>${it.queue ? `<i class="pill hi">估計排隊 ${it.queue} 分</i>` : ''}`;
+  const pill = it.place.nodata ? '<i class="tag">無人潮資料</i>' : `<i class="pill ${crowdCls(it.pct)}">${crowdText(it.pct)}</i>${study ? `<i class="pill q">安靜 ${it.place.quiet}/5 <small>假設</small></i>` : ''}${it.queue ? `<i class="pill hi">估計排隊 ${it.queue} 分</i>` : ''}`;
   const reasons = explain(it);
   const main = ['避開', '彈性縮短', '剛好', '預計', '專注模式'].map((p) => reasons.find((r) => r.startsWith(p))).find(Boolean) || reasons[0];
   const rest = reasons.filter((r) => r !== main);
@@ -102,6 +105,7 @@ function taskCard(it, pl) {
   const alts = it.alts.filter((a) => !a.picked);
   const tags = [srcTag(it.src.source, demoOn)];
   if (it.place.unverified) tags.push('<i class="tag warn">地點待確認</i>');
+  if (it.unconfirmed) tags.push('<i class="tag warn">營業時間未確認</i>');
   if (it.shrunk > 0) tags.push(`<i class="tag warn">彈性縮短 ${it.shrunk} 分</i>`);
   if (it.slack != null && it.slack < 8) tags.push(`<i class="tag warn">緩衝僅 ${Math.max(it.slack, 0)} 分</i>`);
   if (it.pct >= 80 && t.kind === 'meal') tags.push('<i class="tag bad">人潮擁擠</i>');
@@ -116,13 +120,13 @@ function taskCard(it, pl) {
     </div>
     <details class="more"><summary>${ic('info', 16)}理由、其他地點、順序</summary>
       ${rest.length ? `<ul class="why">${rest.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
-      ${alts.map((a) => `<button class="altrow" data-pick="${t.id}:${a.id}"><span>${esc(a.name)}</span><small>${study ? '空位約 ' + approx(100 - a.pct) + '%' : '人潮約 ' + approx(a.pct) + '%' + (a.queue ? ' · 估計排隊 ' + a.queue + ' 分' : '')} · 步行約 ${a.walk} 分 · ${SOURCE_LABEL[a.src?.source] || '模擬'}</small></button>`).join('')}
+      ${alts.map((a) => `<button class="altrow" data-pick="${t.id}:${a.id}"><span>${esc(a.name)}</span><small>${crowdText(a.pct)}${a.queue ? ' · 估計排隊 ' + a.queue + ' 分' : ''} · 步行約 ${a.walk} 分 · ${SOURCE_LABEL[a.src?.source] || '模擬'}</small></button>`).join('')}
       <div class="row" style="margin-top:8px"><button class="btn sm" data-move="${t.id}:-1" ${idx <= 0 ? 'disabled' : ''}>${ic('up', 16)}提早</button><button class="btn sm" data-move="${t.id}:1" ${idx >= pl.order.length - 1 ? 'disabled' : ''}>${ic('down', 16)}延後</button></div>
     </details></article>`;
 }
 
 export function bindPlan(ctx) {
-  const { state } = ctx, pl = state.plan, $ = (s) => document.querySelector(s);
+  const { state } = ctx, pl = ctx.plan(), $ = (s) => document.querySelector(s);
   const commit = () => { ctx.save(); ctx.rerender(); };
   const on = (sel, fn) => document.querySelectorAll(sel).forEach((el) => (el.onclick = () => fn(el)));
   const replan = (text) => { draft = null; Object.assign(pl, { text }, taskState(text)); commit(); };
@@ -158,7 +162,7 @@ export function bindPlan(ctx) {
   };
   document.querySelectorAll('[data-tk]').forEach((el) => (el.onchange = () => editTask(el.dataset.tk, (t) => {
     if (el.dataset.f === 'kind') t.kind = el.value;
-    if (el.dataset.f === 'dur') t.dur = Math.round(+el.value / 5) * 5 || +el.value;
+    if (el.dataset.f === 'dur') { t.dur = Math.round(+el.value / 5) * 5 || +el.value; t.durGuessed = false; }
     if (el.dataset.f === 'deadline') {
       if (el.value) t.deadline = toMin(el.value); else delete t.deadline;
       if (t.userWindow && t.window) { if (t.deadline != null) t.window = [t.window[0], t.deadline]; else { delete t.window; delete t.userWindow; } }
@@ -176,6 +180,8 @@ export function bindPlan(ctx) {
     const id = 'm' + Date.now().toString(36);
     pl.tasks.push({ id, kind: 'study', dur: 60, text: '', manual: true }); pl.order.push(id); commit();
   };
+  const ex = $('#extendWin'); if (ex) ex.onclick = () => { const p = buildPlan(planCtx(ctx)).extendTo; if (p) { pl.win = { start: p.start, end: p.end }; pl.overrides = {}; commit(); ctx.toast(`規劃時段已延長為 ${fmt(p.start)}–${fmt(p.end)}`, 'ok'); } };
+  const xd = $('#exitDemoCourses'); if (xd) xd.onclick = () => ctx.setDemoCourses(false);
   const r = $('#realloc');
   if (r) r.onclick = () => { Object.assign(pl, reallocate(planCtx(ctx))); commit(); };
 }

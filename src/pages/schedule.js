@@ -11,13 +11,13 @@ const PERIODS = [['1', 8], ['2', 9], ['3', 10], ['4', 11], ['Z', 12], ['5', 13],
 const pad = (n) => String(n).padStart(2, '0');
 const covers = (c, p) => toMin(c.start) < p.e && toMin(c.end) > p.s;
 
-function weekGrid(courses) {
+function weekGrid(courses, readOnly = false) {
   const today = nowTW().day, order = [0, 1, 2, 3, 4, 5, 6];
   const head = '<div class="hd">節</div>' + order.map((d) => `<div class="hd ${d === today ? 'today' : ''}">${DAYS[d]}</div>`).join('');
   const rows = PERIODS.map((p) => {
     const cells = order.map((d) => {
       const cs = courses.filter((c) => +c.day === d && covers(c, p));
-      if (!cs.length) return `<button class="pc" data-cell="${d}:${p.id}" aria-label="週${DAYS[d]} 第${p.id}節 新增課程"></button>`;
+      if (!cs.length) return readOnly ? '<div class="pc"></div>' : `<button class="pc" data-cell="${d}:${p.id}" aria-label="週${DAYS[d]} 第${p.id}節 新增課程"></button>`;
       const c = cs[0], first = !courses.some((x) => x.id === c.id && +x.day === d && PERIODS.some((q) => q.s < p.s && covers(x, q)));
       const clash = cs.length > 1;
       return `<button class="pc has ${clash ? 'clash' : ''}" data-edit="${esc(c.id)}" style="background:${COURSE_COLORS[c.color]}" aria-label="${esc(c.name)} 週${DAYS[d]} 第${p.id}節，點擊編輯">${first ? `<b>${esc(c.name)}</b>${c.building ? `<small>${esc(BUILDINGS[c.building])}</small>` : ''}` : ''}</button>`;
@@ -40,6 +40,12 @@ function listView(courses) {
 }
 
 export function renderSchedule(ctx) {
+  if (ctx.state.demo) {
+    const dcs = sortCourses(ctx.courses());
+    return `<div class="page-head"><span class="eyebrow">Schedule</span><h1>示範課表</h1></div>
+    <div class="banner info" style="margin-bottom:12px">${ic('flask', 18)}<div style="flex:1">現在是<b>示範課表</b>（唯讀）。你自己的課表另外保存${ctx.state.courses.length ? `（${ctx.state.courses.length} 堂）` : ''}，切換不會遺失任何資料。</div><button class="btn sm primary" id="exitDemo">使用我的課表</button></div>
+    <section class="card"><div class="card-h"><h2>${ic('calendar')}示範課表 <small>${dcs.length} 堂</small></h2></div>${weekGrid(dcs, true)}</section>`;
+  }
   const courses = sortCourses(ctx.state.courses), ed = courses.find((c) => c.id === view.editId) || null;
   const pf = view.prefill, v = ed || { day: pf?.day ?? (new Date().getDay() || 1), start: pf?.start ?? '09:00', end: pf?.end ?? '09:50', name: '', building: '', color: courses.length % 6 };
   return `<div class="page-head"><span class="eyebrow">Schedule</span><h1>我的課表</h1></div>
@@ -63,13 +69,14 @@ export function renderSchedule(ctx) {
 }
 
 export function bindSchedule(ctx) {
+  if (ctx.state.demo) { const x = document.querySelector('#exitDemo'); if (x) x.onclick = () => ctx.setDemoCourses(false); return; }
   const $ = (s) => document.querySelector(s), { state } = ctx;
   document.querySelectorAll('[data-view]').forEach((b) => (b.onclick = () => { view.mode = b.dataset.view; ctx.rerender(); }));
   document.querySelectorAll('[data-edit]').forEach((b) => (b.onclick = () => { view.editId = b.dataset.edit; ctx.rerender(); document.querySelector('#courseForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }));
   document.querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => {
     const c = state.courses.find((x) => x.id === b.dataset.del);
     if (!c || !confirm(`刪除「${c.name}」？`)) return;
-    state.courses = state.courses.filter((x) => x.id !== c.id); state.demo = state.courses.some((x) => x.demo);
+    state.courses = state.courses.filter((x) => x.id !== c.id);
     view.editId = null; ctx.save(); ctx.rerender(); ctx.toast('已刪除課程', 'ok');
   }));
   document.querySelectorAll('[data-cell]').forEach((b) => (b.onclick = () => {
@@ -91,7 +98,7 @@ export function bindSchedule(ctx) {
   if (clr) clr.onclick = () => {
     const n = state.courses.length;
     if (!confirm(`確定要清除全部 ${n} 堂課嗎？此動作無法復原。\n（規劃中的任務與人潮觀察紀錄不受影響）`)) return;
-    state.courses = []; state.demo = false;
+    state.courses = [];
     Object.assign(state.plan, { overrides: {}, scale: {}, deferred: [] });
     view.editId = null; view.prefill = null; ctx.save(); ctx.rerender(); ctx.toast('已清除全部課表', 'ok');
   };
@@ -108,9 +115,8 @@ export function bindSchedule(ctx) {
     if (clash) return fail(`與「${clash.name}」（週${DAYS[clash.day]} ${clash.start}–${clash.end}）時間重疊，請調整後再儲存`);
     const c = sanitizeCourse({ ...d, id: view.editId || uid() });
     if (!c) return fail('課程資料不正確，請檢查欄位');
-    if (view.editId) { const i = state.courses.findIndex((x) => x.id === view.editId); state.courses[i] = { ...c, ...(state.courses[i].demo ? { demo: true } : {}) }; }
+    if (view.editId) { const i = state.courses.findIndex((x) => x.id === view.editId); state.courses[i] = c; }
     else state.courses.push(c);
-    state.demo = state.courses.some((x) => x.demo);
     view.editId = null; view.prefill = null; ctx.save(); ctx.rerender(); ctx.toast('已儲存課程', 'ok');
   };
 }
