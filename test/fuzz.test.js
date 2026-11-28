@@ -6,7 +6,7 @@ import { toMin, fmt } from '../src/util.js';
 
 let seed = 1; const r = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
 const B = ['mgmt2', 'eng5', 'zhixi', 'zhidao', 'hss', null];
-const T = ['吃午餐', '讀書一小時', '五點前完成作業', '小組討論兩小時', '去行政大樓辦事', '讀書30分鐘', '三點前完成報告', '吃晚餐'];
+const T = ['吃午餐', '讀書一小時', '五點前完成作業', '小組討論兩小時', '去行政大樓辦事', '讀書30分鐘', '三點前完成報告', '吃晚餐', '晚上六點到九點讀書', '在後門吃午餐', '下午兩點到四點小組討論', '松果吃午餐', '晚上在K書中心讀書'];
 
 test('1500 組隨機情境（含重新調配）全部滿足不變條件', () => {
   for (let i = 0; i < 1500; i++) {
@@ -19,7 +19,11 @@ test('1500 組隨機情境（含重新調配）全部滿足不變條件', () => 
       const its = [...p.items].sort((a, b) => a.start - b.start);
       for (const it of p.items) {
         assert.ok(!cs.some(([s, e]) => it.depart < e && it.end > s), '任務或移動與課程重疊 ' + tag);
-        assert.ok(it.start >= c.win.start && it.end <= c.win.end, '超出時間範圍 ' + tag);
+        assert.ok(it.start >= p.win.start && it.end <= p.win.end && p.win.start <= c.win.start && p.win.end >= c.win.end, '超出時間範圍 ' + tag);
+        if (it.task.place) assert.equal(it.place.id, it.task.place, '沒去指定地點 ' + tag);
+        const w = it.task.window || (it.task.kind === 'meal' ? [660, 870] : null);
+        if (w) assert.ok(it.start >= w[0], '早於時段開始 ' + tag);
+        if (it.task.userWindow) assert.ok(it.start >= it.task.window[0] && it.end <= it.task.window[1], '超出指定時段 ' + tag + JSON.stringify([it.task.text, it.task.window, it.start, it.end, it.arrive, it.queue, c.scale]));
         if (it.task.deadline != null) assert.ok(it.end <= it.task.deadline, '超過截止 ' + tag);
         if (it.slack != null) assert.ok(it.slack >= 0, '負緩衝 ' + tag);
         if (it.isLast && it.slot.hasNext) assert.ok(it.end + it.walkOut + c.buffer <= it.slot.e, '來不及上下一堂課 ' + tag);

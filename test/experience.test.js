@@ -50,8 +50,9 @@ test('行政大樓不蒐集人潮但仍可當辦事目的地；系館依教務�
   assert.equal(Object.keys(BUILDINGS).length, 29);
 });
 import { walk, walkSource } from '../src/data/places.js';
-test('步行時間：團隊以 Google 地圖查詢的 15 組（雙向相同）', () => {
-  const G = { 'mgmt2|backdoor': 9, 'mgmt2|nightmarket': 10, 'mgmt2|pinecone': 10, 'mgmt2|female14': 11, 'mgmt2|male9_711': 3, 'mgmt2|mainlib': 4, 'mgmt2|zhongzheng': 4, 'eng5|backdoor': 7, 'eng5|pinecone': 14, 'eng5|female14': 15, 'eng5|male9_711': 15, 'eng5|mainlib': 12, 'backdoor|mainlib': 7, 'pinecone|mainlib': 6, 'male9_711|mainlib': 5 };
+test('步行時間：團隊以 Google 地圖查詢的 33 組（雙向相同）', () => {
+  const G = { 'mgmt2|backdoor': 9, 'mgmt2|nightmarket': 10, 'mgmt2|pinecone': 10, 'mgmt2|female14': 11, 'mgmt2|male9_711': 3, 'mgmt2|mainlib': 4, 'mgmt2|zhongzheng': 4, 'eng5|backdoor': 7, 'eng5|pinecone': 14, 'eng5|female14': 15, 'eng5|male9_711': 15, 'eng5|mainlib': 12, 'backdoor|mainlib': 7, 'pinecone|mainlib': 6, 'male9_711|mainlib': 5,
+    'backdoor|nightmarket': 5, 'backdoor|pinecone': 8, 'backdoor|female14': 6, 'backdoor|male9_711': 12, 'backdoor|zhongzheng': 9, 'nightmarket|pinecone': 6, 'nightmarket|female14': 2, 'nightmarket|male9_711': 10, 'nightmarket|mainlib': 7, 'nightmarket|zhongzheng': 7, 'pinecone|female14': 4, 'pinecone|male9_711': 7, 'pinecone|zhongzheng': 8, 'female14|male9_711': 9, 'female14|mainlib': 6, 'female14|zhongzheng': 6, 'male9_711|zhongzheng': 5, 'mainlib|zhongzheng': 1 };
   for (const [k, v] of Object.entries(G)) { const [a, b] = k.split('|'); assert.equal(walk(a, b), v, k); assert.equal(walk(b, a), v, k); assert.equal(walkSource(a, b), 'gmaps', k); }
   assert.equal(walkSource('eng5', 'zhongzheng'), 'estimate');
   assert.equal(walkSource('mainlib', 'mainlib'), 'none');
