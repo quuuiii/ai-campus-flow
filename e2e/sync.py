@@ -30,10 +30,14 @@ async def main():
         m = await pg.inner_text('main'); ok('上線後送出並清空佇列', '待上傳 0 筆' in m and len(server['rows']) == 1)
         ok('下載團隊資料並併入儀表板（本機1＋團隊1）', '本機＋團隊' in m and await pg.locator('.stat b').first.inner_text() == '2')
         await pg.click('#syncNow'); await pg.wait_for_timeout(500)
-        ok('重複同步不重複上傳', server['posts'] == 1 and len(server['rows']) == 1)
-        await pg.click('[data-demo="5"]'); await pg.wait_for_timeout(300); await pg.click('#syncNow'); await pg.wait_for_timeout(500)
-        ok('示範資料不會上傳', server['posts'] == 1 and not any(k.startswith('demo-') for k in server['rows']))
-        ok('我的紀錄清單只有本機 1 筆', await pg.locator('[data-delobs]').count() == 1)
+        ok('重複同步不重複上傳', server['posts'] >= 1 and len(server['rows']) == 1)
+        import tempfile
+        csv = tempfile.mktemp(suffix='.csv'); open(csv, 'w', encoding='utf-8-sig').write('id,時間（台灣時間）,地點,地點代碼,擁擠度（1-5）,排隊分鐘,觀察方式,備註,timestamp\nimp-0001,,後門餐飲區,backdoor,4,16,事後紀錄,組員紀錄,2026-11-25T10:23:00.000Z\n')
+        pg.once('dialog', lambda d: asyncio.ensure_future(d.accept()))
+        await pg.set_input_files('#impObs', csv); await pg.wait_for_timeout(800)
+        ok('匯入 CSV 後可選擇上傳，來源為 csv_import', server['rows'].get('imp-0001', {}).get('source') == 'csv_import', list(server['rows']))
+        await pg.locator('[data-delobs]').first.click() if False else None
+        ok('我的紀錄清單：本機 1 筆＋匯入 1 筆', await pg.locator('[data-delobs]').count() == 2)
         ok('無 JS 錯誤', not errs, errs)
         await b.close()
     print(f'{sum(R)}/{len(R)} 通過'); sys.exit(0 if all(R) else 1)

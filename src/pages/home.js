@@ -19,13 +19,12 @@ export function renderHome(ctx) {
   const crowdPlaces = [PLACES.backdoor, PLACES.pinecone, PLACES.male9_711, PLACES.female14, PLACES.mainlib, PLACES.zhongzheng].filter((p) => p && !isClosed(p, now.day));
   const rows = crowdPlaces.map((p) => {
     const r = predictCrowd(p, now.minute, obs, now.day), lv = crowdLevel(r.pct);
-    return `<div class="crowd-row"><div class="li-main"><b>${esc(p.short)}</b><small>${crowdText(r.pct)}</small></div><div class="meter" aria-hidden="true"><i class="${lv >= 4 ? 'hi' : lv >= 3 ? 'mid' : ''}" style="width:${lv * 20}%"></i></div><i class="tag src-${r.source}">${SOURCE_LABEL[r.source]}${ctx.demo.days() && r.source !== 'simulated' ? '·示範' : ''}</i></div>`;
+    return `<div class="crowd-row"><div class="li-main"><b>${esc(p.short)}</b><small>${crowdText(r.pct)}</small></div><div class="meter" aria-hidden="true"><i class="${lv >= 4 ? 'hi' : lv >= 3 ? 'mid' : ''}" style="width:${lv * 20}%"></i></div><i class="tag src-${r.source}">${SOURCE_LABEL[r.source]}</i></div>`;
   }).join('');
 
   return `<section class="hero"><div><span class="eyebrow">Today · 台灣時間</span><h1>${esc(dateStr)}</h1></div>
     <p>${cur ? `正在上課：${esc(cur.name)}（到 ${esc(cur.end)}）` : today.length ? '今天有 ' + today.length + ' 堂課' : '今天沒有課，整天都是空堂'}</p></section>
-  ${ctx.demo.days() ? `<div class="banner warn">${ic('flask', 18)}<div><b>示範資料模式（${ctx.demo.days()} 天）：</b>人潮數字包含程式產生的示範資料，不是真實觀察。</div></div>` : ''}
-  ${modelReport(obs).mode === 'demo' && !ctx.demo.days() ? `<div class="banner warn">${ic('flask', 18)}<div><b>示範模式：</b>人潮與排隊數字為人工模擬，尚無通過驗證的預測模型。</div></div>` : ''}
+  ${modelReport(obs).mode === 'demo' ? `<div class="banner warn">${ic('flask', 18)}<div><b>人潮為模擬值：</b>擁擠度與排隊時間依團隊經驗設定，尚無通過驗證的預測模型。</div></div>` : ''}
   ${state.demo ? `<div class="banner info">${ic('flask', 18)}<div style="flex:1">目前顯示的是<b>示範課表</b>（另外保存，不會動到你的課表）。</div><button class="btn sm" data-exit-demo>使用我的課表</button></div>` : ''}
   <div class="quick" role="group" aria-label="捷徑">
     <button data-go="plan">${ic('sparkles', 22)}規劃</button><button data-go="schedule">${ic('calendar', 22)}課表</button>
