@@ -58,6 +58,34 @@ function parseDeadline(seg) {
   return { minute: Math.min(h * 60 + mm, 1439), assumed };
 }
 
+// 指定地點（寫到哪裡就去哪裡；「圖書館」太籠統，不指定）
+const PLACE_RULES = [
+  ['backdoor', /後門/], ['nightmarket', /宵夜街/], ['pinecone', /松果/], ['female14', /女十四|女14/],
+  ['male9_711', /7-?11|7－11|小七|seven|男九/i], ['mainlib', /總圖/], ['zhongzheng', /中正圖|K書中心|舊圖/i], ['admin', /行政大樓|行政/],
+];
+const PERIOD = '(上午|早上|中午|下午|傍晚|晚上)?';
+const toH = (h, period, assumePm) => {
+  if (/下午|傍晚|晚上/.test(period) && h < 12) return h + 12;
+  if (period === '中午' && h <= 2) return h + 12;
+  if (!period && assumePm && h >= 1 && h <= 7) return h + 12;
+  return h;
+};
+// 「六點到九點」「晚上 6 點半～9 點」「18:00-21:00」→ {start, end, assumed}
+function parseRange(seg) {
+  let m = seg.match(/(\d{1,2})\s*[:：]\s*(\d{2})\s*(?:到|至|~|～|-|－|—)\s*(\d{1,2})\s*[:：]\s*(\d{2})/);
+  if (m) { const a = +m[1] * 60 + +m[2], b = +m[3] * 60 + +m[4]; return a < b ? { start: a, end: b, assumed: false } : null; }
+  m = seg.match(new RegExp(PERIOD + '\\s*' + NUM + '\\s*[點時](半)?\\s*(?:到|至|~|～|-|－|—)\\s*' + PERIOD + '\\s*' + NUM + '\\s*[點時]?(半)?'));
+  if (!m) return null;
+  const p1 = m[1] || '', p2 = m[4] || p1, h1 = cnNum(m[2]), h2 = cnNum(m[5]);
+  if (h1 == null || h2 == null || h1 > 24 || h2 > 24) return null;
+  let a = toH(h1, p1, true) * 60 + (m[3] ? 30 : 0), b = toH(h2, p2, true) * 60 + (m[6] ? 30 : 0);
+  if (b <= a && b + 720 > a && h2 < 12) b += 720; // 「下午一點到五點」的第二段沿用下午
+  if (!(a < b) || b > 1440) return null;
+  return { start: a, end: b, assumed: !p1 && h1 >= 1 && h1 <= 7 };
+}
+// 只說時段沒說幾點
+const DAYPART = [[/晚上/, [1080, 1320]], [/傍晚/, [1020, 1140]], [/下午/, [780, 1080]], [/上午|早上/, [480, 720]], [/中午/, [690, 810]]];
+
 // 解析整段需求：回傳任務與「看不懂的片段」，看不懂的不會被默默丟掉
 export function parseRequest(text) {
   const segs = String(text || '').split(/[，,。；;、\n！!？?]|還要|還有|然後|以及|另外/).map((x) => x.trim()).filter(Boolean);
@@ -69,9 +97,24 @@ export function parseRequest(text) {
     const d = parseDuration(seg);
     const dur = Math.max(10, Math.min(240, d ?? KINDS[kind].dur));
     const task = { id: kind + tasks.length, kind, dur, text: seg, durGuessed: d == null };
-    const dl = parseDeadline(seg);
-    if (dl) { task.deadline = dl.minute; if (dl.assumed) notes.push(`「${seg}」的時間推測為 ${fmt(dl.minute)}，如不正確請手動修改`); }
-    if (kind === 'meal' && /晚餐|晚飯/.test(seg)) task.window = [1020, 1200];
+    const range = parseRange(seg);
+    if (range) {
+      // 指定時段：在這段時間內完成；沒寫時長就用整段
+      task.window = [range.start, range.end]; task.deadline = range.end; task.userWindow = true;
+      if (d == null) { task.dur = Math.max(10, Math.min(240, range.end - range.start)); task.durGuessed = false; }
+      if (range.assumed) notes.push(`「${seg}」推測為 ${fmt(range.start)}–${fmt(range.end)}，如不正確請手動修改`);
+    } else {
+      const dl = parseDeadline(seg);
+      if (dl) { task.deadline = dl.minute; if (dl.assumed) notes.push(`「${seg}」的時間推測為 ${fmt(dl.minute)}，如不正確請手動修改`); }
+      if (kind === 'meal' && /晚餐|晚飯/.test(seg)) task.window = [1020, 1200];
+      else if (kind === 'meal' && /午餐|午飯|中午/.test(seg)) task.window = [660, 870];
+      else { const dp = DAYPART.find(([re]) => re.test(seg)); if (dp) { task.window = [...dp[1]]; task.userWindow = true; } }
+    }
+    const pl = PLACE_RULES.find(([, re]) => re.test(seg));
+    if (pl) {
+      if (PLACES[pl[0]].kinds.includes(kind)) task.place = pl[0];
+      else notes.push(`「${seg}」提到的${PLACES[pl[0]].short}不適合「${KINDS[kind].label}」，已改由系統挑選地點`);
+    }
     tasks.push(task);
   }
   return { tasks, unknown, notes };
@@ -118,6 +161,7 @@ function evaluate(t, sl, want, ctx, slotItems) {
   const out = [];
   for (const p of Object.values(PLACES)) {
     if (!p.kinds.includes(t.kind) || isClosed(p, ctx.day)) continue;
+    if (t.place && p.id !== t.place) continue; // 使用者指定的地點，不換
     const walkIn = walk(sl.loc, p.id);
     const moveBuf = slotItems.length > 0 && walkIn > 0 ? buf : 0;
     const arrive = sl.cur + moveBuf + walkIn;
@@ -132,7 +176,7 @@ function evaluate(t, sl, want, ctx, slotItems) {
     const baseDur = t.kind === 'meal' ? p.eat ?? want : want;
     // 下一堂課未填教室時，步行以預設值估算，緩衝照樣保留
     const walkOut = sl.hasNext ? walk(p.id, sl.next) : 0;
-    const limit = Math.min(sl.e - walkOut - (sl.hasNext ? buf : 0), t.deadline ?? 1e9);
+    const limit = Math.min(sl.e - walkOut - (sl.hasNext ? buf : 0), t.deadline ?? 1e9, t.userWindow && t.window ? t.window[1] : 1e9);
     const avail = limit - start;
     const flex = KINDS[t.kind].flex;
     const minDur = flex ? Math.max(20, Math.round((baseDur * 0.8) / 5) * 5) : baseDur;
@@ -149,9 +193,13 @@ function evaluate(t, sl, want, ctx, slotItems) {
 }
 
 // 在同一空堂內縮短前面的彈性任務 x 分鐘，後面的任務跟著提前
+// 有時段限制的任務（含用餐時段）不能被往前挪：只縮短它之後的彈性任務
 function shrink(sl, slotItems, x) {
   let left = x;
-  for (let j = 0; j < slotItems.length && left > 0; j++) {
+  const anchored = (it) => !!(it.task.window || KINDS[it.task.kind].window);
+  let from = 0;
+  slotItems.forEach((it, j) => { if (anchored(it)) from = j + 1; });
+  for (let j = from; j < slotItems.length && left > 0; j++) {
     const it = slotItems[j];
     if (!KINDS[it.task.kind].flex) continue;
     const cut = Math.min(left, it.dur - it.minDur);
@@ -169,12 +217,14 @@ function shrink(sl, slotItems, x) {
 // 說明某任務為什麼排不進去（明確原因）
 function whyNot(t, slots, ctx) {
   if (!slots.length) return '規劃時段內沒有空堂';
+  if (t.place && isClosed(PLACES[t.place], ctx.day)) return `你指定的${PLACES[t.place].short}這天沒有營業`;
   const win = t.window || KINDS[t.kind].window;
-  if (win && !slots.some((s) => s.e > win[0] && s.s < win[1])) return `沒有落在 ${fmt(win[0])}–${fmt(win[1])} 用餐時段內的空堂`;
+  if (win && !slots.some((s) => s.e > win[0] && s.s < win[1])) return `${fmt(win[0])}–${fmt(win[1])} 之間沒有空堂（有課）`;
   if (t.deadline != null && t.deadline <= slots[0].s) return `截止時間 ${fmt(t.deadline)} 早於第一個空堂（${fmt(slots[0].s)}）`;
   const usable = slots.map((s) => Math.min(s.e, t.deadline ?? s.e) - s.s).filter((x) => x > 0);
   const longest = usable.length ? Math.max(...usable) : 0;
   if (longest < t.dur) return `最長可用空堂只有 ${longest} 分鐘，需要 ${t.dur} 分鐘`;
+  if (t.place) return `指定的${PLACES[t.place].short}扣掉步行、排隊與 ${ctx.buffer} 分鐘緩衝後放不下；可改地點或調整時間`;
   return `扣掉步行、排隊與 ${ctx.buffer} 分鐘緩衝後，剩下的空堂放不下（已被其他任務佔用）`;
 }
 
@@ -182,6 +232,11 @@ function whyNot(t, slots, ctx) {
 export function buildPlan(c) {
   const ctx = { buffer: 5, overrides: {}, scale: {}, deferred: [], mode: 'crowd', crowd: defaultCrowdFn(), ...c };
   ctx.buffer = Math.max(0, Number(ctx.buffer) || 0);
+  // 任務指定的時段若超出規劃範圍，自動延長（例如晚上 6–9 點讀書）
+  const tw = (ctx.tasks || []).filter((t) => !ctx.deferred.includes(t.id));
+  const ws = Math.min(ctx.win.start, ...tw.filter((t) => t.userWindow && t.window).map((t) => t.window[0]));
+  const we = Math.max(ctx.win.end, ...tw.filter((t) => t.userWindow || t.deadline != null).map((t) => (t.userWindow && t.window ? t.window[1] : t.deadline)));
+  ctx.win = { start: ws, end: Math.min(1440, we) };
   const slots = computeSlots(ctx.courses, ctx.day, ctx.win, ctx.origin || null).map((s) => ({ ...s, cur: s.s, loc: s.prev, items: [] }));
   const baseSlots = slots.map((s) => ({ s: s.s, e: s.e }));
   const ordered = ctx.order.map((id) => ctx.tasks.find((t) => t.id === id)).filter((t) => t && !ctx.deferred.includes(t.id));
@@ -190,7 +245,7 @@ export function buildPlan(c) {
   for (const t of ordered) {
     const want = Math.max(10, Math.round((t.dur * (ctx.scale[t.id] ?? 1)) / 5) * 5);
     let hit = null;
-    for (let k = si; k < slots.length && !hit; k++) {
+    for (let k = t.userWindow ? 0 : si; k < slots.length && !hit; k++) {
       const cands = evaluate(t, slots[k], want, ctx, slots[k].items);
       if (!cands.length) continue;
       let pick = cands[0];
@@ -228,7 +283,7 @@ export function buildPlan(c) {
       slack: null,
     };
     sl2.cur = item.end; sl2.loc = pick.place.id; sl2.items.push(item); items.push(item);
-    si = hit.k; // 後面的任務不能排到更早的空堂
+    if (!t.userWindow) si = hit.k; // 後面的任務不能排到更早的空堂（指定時段的任務除外）
   }
   // 每個空堂最後一項：計算回到下一堂課的緩衝
   for (const sl of slots) {
@@ -255,7 +310,7 @@ export function buildPlan(c) {
   const toClassWalk = items.reduce((a, i) => a + (i.isLast && i.slot.hasNext ? i.walkOut : 0), 0);
   const totalWalk = moveWalk + toClassWalk;
   const savedQueue = items.reduce((a, i) => a + Math.max(0, (i.worst?.queue || 0) - i.queue), 0);
-  return { slots, items, unscheduled, warnings, level, totalWalk, moveWalk, toClassWalk, savedQueue, freeMin, needMin };
+  return { slots, items, unscheduled, warnings, level, totalWalk, moveWalk, toClassWalk, savedQueue, freeMin, needMin, win: ctx.win };
 }
 
 // ── AI 一鍵重新調配：枚舉任務順序，必要時壓縮彈性任務或延後 ──
@@ -315,6 +370,8 @@ export function explain(it) {
   } else {
     out.push(`人潮約 ${approx(it.pct)}%（${srcTag}）｜${walkTxt}`);
   }
+  if (t.place) out.push(`你指定的地點：${p.name}`);
+  if (t.userWindow && t.window) out.push(`排在你指定的 ${fmt(t.window[0])}–${fmt(t.window[1])} 時段內`);
   if (p.unverified) out.push(`待確認：${p.unverified}`);
   if (it.src?.note) out.push(`資料說明：${it.src.note}`);
   if (t.deadline != null) out.push(it.deadlineSlack === 0 ? `剛好在 ${fmt(t.deadline)} 前完成（無額外緩衝）` : `預計 ${fmt(it.end)} 完成，距 ${fmt(t.deadline)} 截止還有 ${it.deadlineSlack} 分`);

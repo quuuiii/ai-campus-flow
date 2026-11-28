@@ -50,6 +50,8 @@ export function sanitizeTask(t) {
   if (t.deadline != null) { const d = Math.round(+t.deadline); if (d >= 0 && d < 1440) out.deadline = d; }
   if (Array.isArray(t.window) && t.window.length === 2 && t.window.every((x) => Number.isInteger(x) && x >= 0 && x <= 1440) && t.window[0] < t.window[1]) out.window = [...t.window];
   if (t.manual) out.manual = true;
+  if (t.userWindow && out.window) out.userWindow = true;
+  if (typeof t.place === 'string' && PLACES[t.place]?.kinds.includes(out.kind)) out.place = t.place;
   return out;
 }
 export function defaultPlan(courses, text = DEMO_TEXT) {

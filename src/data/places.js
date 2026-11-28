@@ -73,6 +73,12 @@ const GMAPS = {
   'mgmt2|mainlib': 4, 'mgmt2|zhongzheng': 4,
   'eng5|backdoor': 7, 'eng5|pinecone': 14, 'eng5|female14': 15, 'eng5|male9_711': 15, 'eng5|mainlib': 12,
   'backdoor|mainlib': 7, 'pinecone|mainlib': 6, 'male9_711|mainlib': 5,
+  // 第二批（2026-11-28）
+  'backdoor|nightmarket': 5, 'backdoor|pinecone': 8, 'backdoor|female14': 6, 'backdoor|male9_711': 12, 'backdoor|zhongzheng': 9,
+  'nightmarket|pinecone': 6, 'nightmarket|female14': 2, 'nightmarket|male9_711': 10, 'nightmarket|mainlib': 7, 'nightmarket|zhongzheng': 7,
+  'pinecone|female14': 4, 'pinecone|male9_711': 7, 'pinecone|zhongzheng': 8,
+  'female14|male9_711': 9, 'female14|mainlib': 6, 'female14|zhongzheng': 6,
+  'male9_711|zhongzheng': 5, 'mainlib|zhongzheng': 1,
 };
 const EST = {
   'mgmt2|admin': 6, 'eng5|nightmarket': 7, 'eng5|zhongzheng': 5, 'eng5|admin': 8,
