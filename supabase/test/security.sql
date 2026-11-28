@@ -26,6 +26,14 @@ select 'A6 成員清單', count(*) from public.member_list;
 select 'A7 待審清單', count(*) from public.crowd_review_queue;
 select 'A9 偽造 reporter'; insert into public.crowd_observations (client_id, observed_at, place_id, crowd_level, reporter) values ('fake-001', now(), 'backdoor', 3, '22222222-2222-2222-2222-222222222222');
 select 'A10 偽造核可（reporter 身分）'; insert into public.crowd_observations (client_id, observed_at, place_id, crowd_level, status) values ('fake-002', now(), 'backdoor', 3, 'approved');
+select 'OK9 組員一次補傳 8 筆（不受限流）';
+set test.uid = '22222222-2222-2222-2222-222222222222';
+insert into public.crowd_observations (client_id, observed_at, place_id, crowd_level, method, source, device_hash) select 'bulk-'||g, now() - (g || ' hours')::interval, 'backdoor', 3, 'manual', 'csv_import', 'devMATE' from generate_series(1,8) g on conflict (client_id) do nothing;
+select 'OK9 結果', count(*) from public.crowd_observations_public where client_id like 'bulk-%';
+select 'A11 匿名一次 7 筆（第 6 筆起應被限流）';
+set role anon; set test.uid = '';
+insert into public.crowd_observations (client_id, observed_at, place_id, crowd_level, device_hash) select 'spam-'||g, now(), 'backdoor', 3, 'devSPAM' from generate_series(1,7) g;
+set role authenticated;
 -- 管理員
 set test.uid = '11111111-1111-1111-1111-111111111111';
 select 'OK5 管理員讀待審', client_id, note from public.crowd_review_queue;

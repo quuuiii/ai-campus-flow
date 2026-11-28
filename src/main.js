@@ -4,7 +4,7 @@ import { ic } from './icons.js';
 import { COURSE_COLORS } from './data/demo.js';
 import { loadState, saveState, loadObservations, saveObservations, viewCourses, viewPlan, setDemo } from './store.js';
 import { sessionFromHash, saveSession, loadSession, validToken, whoami, sendMagicLink, signOut } from './lib/auth.js';
-import { syncConfig, enqueue, flush, pull, remoteObs, mergeObs, outbox, retryFailed } from './lib/sync.js';
+import { syncConfig, enqueue, flush, pull, remoteObs, mergeObs, outbox, retryFailed, unsentLocal, enqueueAll } from './lib/sync.js';
 import { renderHome, bindHome } from './pages/home.js';
 import { renderPlan, bindPlan } from './pages/plan.js';
 import { renderSchedule, bindSchedule } from './pages/schedule.js';
@@ -64,6 +64,8 @@ const ctx = {
   sync: {
     configured: !!syncCfg, state: syncState,
     queue: () => outbox(localStorage),
+    unsent: () => (syncCfg ? unsentLocal(localStorage, observations) : []),
+    uploadLocal: () => { const n = enqueueAll(localStorage, unsentLocal(localStorage, observations)); ctx.sync.run(); return n; },
     enqueue: (o) => (syncCfg ? enqueue(localStorage, o) : false),
     retry: () => { retryFailed(localStorage); return ctx.sync.run(); },
     run: async () => {

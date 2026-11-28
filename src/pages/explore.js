@@ -85,6 +85,7 @@ function crowdPane(ctx) {
   const syncCard = `<section class="card"><div class="card-h"><h2>${ic('cloud')}團隊同步</h2><i class="tag ${ctx.sync.configured ? 'ok' : 'warn'}">${ctx.sync.configured ? '已設定' : '未設定'}</i></div>
     ${ctx.sync.configured ? `<p class="note">待上傳 ${pend} 筆${fail.length ? `、被拒絕 ${fail.length} 筆` : ''}${st.lastPull ? ` · 上次下載 ${esc(fmtTW(st.lastPull))}` : ''}${st.lastError ? ` · <b>${esc(st.lastError)}</b>` : ''}</p>
       ${fail.slice(0, 3).map((x) => `<p class="note faint">${esc(x.obs.place)}：${esc(x.error)}</p>`).join('')}
+      ${(() => { const u = ctx.sync.unsent().length; return u ? `<div class="banner warn" style="margin-top:8px">${ic('upload', 18)}<div style="flex:1">這台裝置有 <b>${u} 筆</b>紀錄還沒上傳過（例如設定團隊資料庫之前存的，或舊版匯入的）。<div class="row" style="margin-top:6px"><button class="btn sm primary" id="uploadLocal">上傳這 ${u} 筆</button><span class="note">已在雲端的會自動略過，不會重複</span></div></div></div>` : ''; })()}
       <div class="row" style="margin-top:8px"><button class="btn sm" id="syncNow" ${st.busy ? 'disabled' : ''}>${ic('refresh', 16)}${st.busy ? '同步中…' : '立即同步'}</button>${fail.length ? `<button class="btn sm outline" id="syncRetry">重試被拒絕的</button>` : ''}</div>
       <p class="note faint" style="margin-top:8px">匿名回報需管理員審核後才會出現在團隊資料；在這裡刪除只會刪本機，不會刪伺服器上的紀錄。</p>`
     : '<p class="note">尚未連接團隊資料庫，紀錄只存在這支手機。設定方式見專案的 docs/supabase-plan.md（需要建立 Supabase 帳號並設定 Vercel 環境變數）。</p>'}</section>`;
@@ -175,6 +176,7 @@ function bindCrowd(ctx) {
     if (!confirm('刪除這筆觀察紀錄？')) return;
     ctx.setObs(deleteObservation(ctx.obs(), b.dataset.delobs)); ctx.rerender(); ctx.toast('已刪除', 'ok');
   }));
+  const ul = $('#uploadLocal'); if (ul) ul.onclick = () => { const n = ctx.sync.uploadLocal(); ctx.toast(`已排入 ${n} 筆，上傳中`, 'ok'); };
   const sn = $('#syncNow'); if (sn) sn.onclick = () => ctx.sync.run();
   const sr = $('#syncRetry'); if (sr) sr.onclick = () => ctx.sync.retry();
   const exp = $('#expObs');

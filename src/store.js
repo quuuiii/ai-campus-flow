@@ -205,7 +205,7 @@ export function clearCourses(state) { state.courses = []; state.plan = defaultPl
 export function clearObservations(storage = globalThis.localStorage) { try { storage.removeItem(KEYS.obs); return true; } catch { return false; } }
 // 本機全部：課表／規劃、觀察、待上傳佇列、團隊資料快取、回報表單設定（不碰雲端、不碰登入狀態與舊版 v1 備份）
 export function clearAll(storage = globalThis.localStorage) {
-  try { for (const k of [KEYS.state, KEYS.obs, 'campus-flow-outbox-v1', 'campus-flow-remote-obs-v1', 'campus-flow-last-obs-place']) storage.removeItem(k); return true; } catch { return false; }
+  try { for (const k of [KEYS.state, KEYS.obs, 'campus-flow-outbox-v1', 'campus-flow-remote-obs-v1', 'campus-flow-uploaded-v1', 'campus-flow-last-obs-place']) storage.removeItem(k); return true; } catch { return false; }
 }
 
 export const kindLabel = (k) => KINDS[k]?.label || k;

@@ -4,6 +4,7 @@
 export const authHeaders = (cfg, token) => (token ? { apikey: cfg.key, Authorization: `Bearer ${token}` } : { apikey: cfg.key });
 export const OUTBOX_KEY = 'campus-flow-outbox-v1';
 export const REMOTE_KEY = 'campus-flow-remote-obs-v1';
+export const UPLOADED_KEY = 'campus-flow-uploaded-v1'; // 已確認上傳成功的紀錄 id
 
 export function syncConfig(env = {}) {
   // 容錯：去掉前後空白、結尾斜線與誤貼的 /rest/v1
@@ -56,7 +57,7 @@ export async function flush(cfg, storage, fetchImpl = globalThis.fetch, token = 
         headers: { ...authHeaders(cfg, token), 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal' },
         body: JSON.stringify(toRow(item.obs, device)),
       });
-      if (res.ok) { item.status = 'sent'; sent++; continue; }
+      if (res.ok) { item.status = 'sent'; sent++; markUploaded(storage, item.id); continue; }
       const msg = (await res.text().catch(() => '')).slice(0, 200);
       if (res.status === 401) item.error = '登入已過期，請重新登入（資料保留在佇列）';
       else if (res.status === 429 || res.status >= 500) item.error = res.status === 429 ? '回報太頻繁，稍後自動重送' : `伺服器錯誤 ${res.status}`;
@@ -67,6 +68,15 @@ export async function flush(cfg, storage, fetchImpl = globalThis.fetch, token = 
   write(storage, OUTBOX_KEY, left);
   return { sent, failed: left.filter((x) => x.status === 'failed').length, pending: left.filter((x) => x.status === 'pending').length };
 }
+export const uploadedIds = (storage) => new Set(read(storage, UPLOADED_KEY));
+export function markUploaded(storage, id) { const s = uploadedIds(storage); s.add(id); write(storage, UPLOADED_KEY, [...s].slice(-5000)); }
+// 本機紀錄中「沒確認上傳過、也不在佇列裡」的（例如設定團隊資料庫之前存的、舊版匯入的）
+export function unsentLocal(storage, localList) {
+  const up = uploadedIds(storage), q = new Set(outbox(storage).map((x) => x.id));
+  return localList.filter((o) => o.placeId && !up.has(o.id) && !q.has(o.id));
+}
+// 全部排入上傳；伺服器以 client_id 去重，曾經上傳過的會自動略過
+export function enqueueAll(storage, list) { let n = 0; for (const o of list) if (enqueue(storage, o)) n++; return n; }
 export function retryFailed(storage) {
   return write(storage, OUTBOX_KEY, outbox(storage).map((x) => (x.status === 'failed' ? { ...x, status: 'pending', error: '' } : x)));
 }
