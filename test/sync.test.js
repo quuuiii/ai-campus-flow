@@ -72,3 +72,13 @@ test('資料蒐集缺口：只算真實紀錄（帶 demo 旗標的舊資料不�
   assert.ok(g.todo.length > 0 && g.todo.every((x) => x.need > 0));
   assert.ok(!g.places.some((p) => p.nodata));
 });
+test('補傳本機紀錄：找出沒上傳過的、上傳成功後記錄，不重複列出', async () => {
+  const { unsentLocal, enqueueAll, uploadedIds } = await import('../src/lib/sync.js');
+  const s = mem(); const local = [obs('L1'), obs('L2'), { ...obs('L3'), placeId: undefined }];
+  assert.deepEqual(unsentLocal(s, local).map((o) => o.id), ['L1', 'L2'], '沒有地點代碼的舊紀錄無法上傳');
+  assert.equal(enqueueAll(s, unsentLocal(s, local)), 2);
+  assert.equal(unsentLocal(s, local).length, 0, '已在佇列中');
+  await flush(cfg, s, async () => res(201));
+  assert.ok(uploadedIds(s).has('L1') && uploadedIds(s).has('L2'));
+  assert.equal(unsentLocal(s, local).length, 0, '上傳成功後不再列出');
+});

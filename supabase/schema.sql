@@ -98,7 +98,8 @@ begin
   if not exists (select 1 from public.places where id = new.place_id and active) then
     raise exception 'place not active';
   end if;
-  -- 限流：同一裝置或同一帳號每 10 分鐘最多 5 筆
+  -- 限流：匿名與 reporter 每 10 分鐘最多 5 筆（組員與管理員不限，方便補傳整批紀錄）
+  if public.is_member() then return new; end if;
   select count(*) into recent from public.crowd_observations
    where created_at > now() - interval '10 minutes'
      and ((new.device_hash is not null and device_hash = new.device_hash) or (new.reporter is not null and reporter = new.reporter));
