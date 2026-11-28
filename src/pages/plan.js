@@ -108,7 +108,7 @@ function taskCard(it, pl) {
   return `<article class="tcard ${done ? 'done' : ''}">
     <div class="th"><span class="tk">${ic(k.icon, 16)}${k.label}</span><time>${fmt(it.start)}–${fmt(it.end)}</time></div>
     <h3>${esc(it.place.name)}</h3><div class="pills">${pill}${tags.join('')}</div>
-    <p class="route">${route}</p>${stay && !it.queue ? '' : `<p class="route"><i>${it.from && !stay ? '約 ' + fmt(it.arrive) + ' 抵達' : ''}${it.queue ? '，估計排隊約 ' + it.queue + ' 分後開始' : ''}</i></p>`}<p class="why1">${esc(main)}</p>
+    <p class="route">${route}</p>${stay && !it.queue && !(it.free >= 15) ? '' : `<p class="route"><i>${it.free >= 15 ? `${fmt(it.depart - it.free)}–${fmt(it.depart)} 自由時間（${it.free} 分），` : ''}${!stay ? '約 ' + fmt(it.depart) + ' 出發、' + fmt(it.arrive) + ' 抵達' : ''}${it.queue ? '，估計排隊約 ' + it.queue + ' 分後開始' : ''}</i></p>`}<p class="why1">${esc(main)}</p>
     <div class="row">
       <button class="btn sm ${done ? 'primary' : ''}" data-done="${t.id}" aria-pressed="${done}">${ic(done ? 'done' : 'square', 16)}${done ? '已完成' : '完成'}</button>
       ${alts.length ? `<button class="btn sm" data-alt="${t.id}">${ic('refresh', 16)}換地點</button>` : ''}

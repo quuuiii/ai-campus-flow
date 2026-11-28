@@ -38,3 +38,14 @@ test('1500 組隨機情境（含重新調配）全部滿足不變條件', () => 
     }
   }
 });
+
+test('不提早出發空等：有時段的任務在時段開始時抵達，之前是自由時間', async () => {
+  const { parseRequest } = await import('../src/engine/scheduler.js');
+  const r = parseRequest('我想吃後門午餐、晚上六點到九點去讀書');
+  const courses = [{ id: 'a', day: '1', start: '13:00', end: '15:50', building: 'mgmt2', name: '組織行為' }];
+  const p = buildPlan({ courses, day: 1, win: { start: 540, end: 1020 }, tasks: r.tasks, order: r.tasks.map((t) => t.id), mode: 'walk' });
+  const st = p.items.find((i) => i.task.kind === 'study'), meal = p.items.find((i) => i.task.kind === 'meal');
+  assert.equal(st.arrive, 1080); assert.equal(st.depart, 1080 - st.walkIn); assert.equal(st.free, 1080 - st.walkIn - 950);
+  assert.equal(meal.arrive, 660, '午餐 11:00 抵達，不是 09:05');
+  assert.equal(meal.start - meal.arrive, meal.queue);
+});

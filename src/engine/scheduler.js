@@ -164,11 +164,12 @@ function evaluate(t, sl, want, ctx, slotItems) {
     if (t.place && p.id !== t.place) continue; // 使用者指定的地點，不換
     const walkIn = walk(sl.loc, p.id);
     const moveBuf = slotItems.length > 0 && walkIn > 0 ? buf : 0;
-    const arrive = sl.cur + moveBuf + walkIn;
+    const earliest = sl.cur + moveBuf + walkIn;
     const win = t.window || KINDS[t.kind].window;
-    if (win && arrive > win[1]) continue;
+    if (win && earliest > win[1]) continue;
+    // 時段還沒到時不要提早出發空等：算成「剛好在時段開始時抵達」，中間是自由時間；人潮也用實際抵達時間計算
+    const arrive = win && earliest < win[0] ? win[0] : earliest;
     let start = arrive;
-    if (win && start < win[0]) start = win[0];
     const cr = ctx.crowd(p, arrive);
     const pct = cr.pct;
     const queue = t.kind === 'meal' || t.kind === 'errand' ? queueMin(pct, p) : 0;
@@ -274,7 +275,7 @@ export function buildPlan(c) {
     const sl2 = slots[hit.k];
     const worst = [...hit.cands].sort((a, b) => b.pct - a.pct)[0];
     const item = {
-      task: t, place: pick.place, slot: sl2, slotIndex: hit.k, from: sl2.loc, depart: sl2.cur + pick.moveBuf,
+      task: t, place: pick.place, slot: sl2, slotIndex: hit.k, from: sl2.loc, depart: pick.arrive - pick.walkIn, free: pick.arrive - pick.walkIn - (sl2.cur + pick.moveBuf),
       walkIn: pick.walkIn, walkOut: pick.walkOut, arrive: pick.arrive, queue: pick.queue,
       start: pick.start, end: pick.start + pick.dur, dur: pick.dur, minDur: pick.minDur, want,
       pct: pick.pct, src: pick.src, shrunk: t.kind === 'meal' ? 0 : Math.max(0, want - pick.dur), worst,
